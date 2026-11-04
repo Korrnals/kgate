@@ -34,7 +34,7 @@ payload: build/kgate-arm64 build/sing-box
 	@cp -f $(ETC_DIR)/ssh/authorized_keys build/root/opt/etc/ssh/authorized_keys
 	@cp -f $(ETC_DIR)/passwd build/root/opt/etc/passwd
 	@tar -czf internal/deploy/payload.tgz -C build kgate-arm64 sing-box S99kgate ndm-commands.sh root
-	@echo "payload: $(shell du -h internal/deploy/payload.tgz | cut -f1)"
+	@ls -la internal/deploy/payload.tgz | awk '{print "payload: " $$5 " bytes"}'
 
 build: payload
 	go build -ldflags "$(LDFLAGS)" -o kgate .

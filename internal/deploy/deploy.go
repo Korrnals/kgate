@@ -95,10 +95,10 @@ mv -f sing-box /opt/sbin/sing-box
 mv -f ndm-commands.sh /opt/etc/ndm-commands.sh
 mv -f S99kgate /opt/etc/init.d/S99kgate
 mkdir -p /opt/etc/sing-box/rulesets
-cp -f opt/etc/sing-box/config.json /opt/etc/sing-box/config.json
-cp -f opt/etc/sing-box/rulesets/*.srs /opt/etc/sing-box/rulesets/ 2>/dev/null
-cp -f opt/etc/ssh/authorized_keys /opt/etc/ssh/authorized_keys
-grep -q "^sshd:" /opt/etc/passwd || cat opt/etc/passwd >> /opt/etc/passwd
+cp -f root/opt/etc/sing-box/config.json /opt/etc/sing-box/config.json
+cp -f root/opt/etc/sing-box/rulesets/*.srs /opt/etc/sing-box/rulesets/ 2>/dev/null
+cp -f root/opt/etc/ssh/authorized_keys /opt/etc/ssh/authorized_keys
+grep -q "^sshd:" /opt/etc/passwd || cat root/opt/etc/passwd >> /opt/etc/passwd
 chmod +x /opt/sbin/kgate /opt/sbin/sing-box /opt/etc/init.d/S99kgate
 rm -rf /tmp/px /tmp/payload.tgz
 mkdir -p /opt/etc/kgate /opt/etc/ssh /opt/var/log /opt/var/run
