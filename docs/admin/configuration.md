@@ -53,3 +53,24 @@
 - [operations.md](operations.md) — диагностика и типовые неисправности
 - [architecture/data-model.md](../architecture/data-model.md) — полная модель конфига и payload
 - [api/authentication.md](../api/authentication.md) — сертификаты в действии
+
+## Переменные окружения (поверх yaml)
+
+Приоритет: **env `KGATE_*` > yaml > дефолты**. Удобно для контейнеров/сервисов,
+когда не хочется править файл.
+
+| Переменная | Поле |
+|---|---|
+| `KGATE_HOST` | host |
+| `KGATE_SERVER_IP` | server_ip (ndm route-pin) |
+| `KGATE_SSH_PORT` / `KGATE_SSH_USER` / `KGATE_SSH_KEY` | ssh_* |
+| `KGATE_API_PORT` | api.port |
+| `KGATE_API_CA` / `KGATE_API_CERT` / `KGATE_API_KEY` | пути сертификатов клиента |
+| `KGATE_DAEMON_SINGBOX_BIN` / `_SINGBOX_CONFIG` / `_SINGBOX_LOG` | пути движка |
+| `KGATE_DAEMON_RELAY_LISTEN` / `_RELAY_UPSTREAM` | socks-relay |
+| `KGATE_DAEMON_API_LISTEN` | адрес mTLS API |
+| `KGATE_DAEMON_WEB_ROOT` / `_LOG` | каталог сертов / лог |
+| `KGATE_DAEMON_RLIMIT_NOFILE` | FD-лимит sing-box |
+| `KGATE_DAEMON_BOOT_AUTOUP` | `1`/`true`/`yes` — авто-подъём туннеля |
+
+Пример: `KGATE_API_PORT=9443 KGATE_DAEMON_LOG=/tmp/kgate.log kgate serve -c kgate.yaml`

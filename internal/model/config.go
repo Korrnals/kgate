@@ -2,6 +2,8 @@ package model
 
 import (
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -128,7 +130,56 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	c.fillDefaults()
+	applyEnv(c)
 	return c, nil
+}
+
+// applyEnv применяет переменные окружения KGATE_* поверх yaml.
+// Приоритет: env > yaml > встроенные дефолты. Именование зеркалит yaml-пути.
+func applyEnv(c *Config) {
+	envStr := func(key string, dst *string) {
+		if v := os.Getenv(key); v != "" {
+			*dst = v
+		}
+	}
+	envInt := func(key string, dst *int) {
+		if v := os.Getenv(key); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				*dst = n
+			}
+		}
+	}
+	envBool := func(key string, dst *bool) {
+		if v := os.Getenv(key); v != "" {
+			*dst = v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+		}
+	}
+
+	envStr("KGATE_HOST", &c.Host)
+	envStr("KGATE_SERVER_IP", &c.ServerIP)
+	envInt("KGATE_SSH_PORT", &c.SSHPort)
+	envStr("KGATE_SSH_USER", &c.SSHUser)
+	envStr("KGATE_SSH_KEY", &c.SSHKey)
+
+	envInt("KGATE_API_PORT", &c.API.Port)
+	envStr("KGATE_API_CA", &c.API.CA)
+	envStr("KGATE_API_CERT", &c.API.Cert)
+	envStr("KGATE_API_KEY", &c.API.Key)
+
+	envStr("KGATE_DAEMON_SINGBOX_BIN", &c.Daemon.SingBoxBin)
+	envStr("KGATE_DAEMON_SINGBOX_CONFIG", &c.Daemon.SingBoxConfig)
+	envStr("KGATE_DAEMON_SINGBOX_LOG", &c.Daemon.SingBoxLog)
+	envStr("KGATE_DAEMON_RELAY_LISTEN", &c.Daemon.RelayListen)
+	envStr("KGATE_DAEMON_RELAY_UPSTREAM", &c.Daemon.RelayUpstream)
+	envStr("KGATE_DAEMON_API_LISTEN", &c.Daemon.APIListen)
+	envStr("KGATE_DAEMON_WEB_ROOT", &c.Daemon.WebRoot)
+	envStr("KGATE_DAEMON_LOG", &c.Daemon.Log)
+	if v := os.Getenv("KGATE_DAEMON_RLIMIT_NOFILE"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			c.Daemon.RlimitNofile = n
+		}
+	}
+	envBool("KGATE_DAEMON_BOOT_AUTOUP", &c.Daemon.BootAutoup)
 }
 
 func Dur(s string, def time.Duration) time.Duration {

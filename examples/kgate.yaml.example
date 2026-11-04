@@ -1,4 +1,6 @@
 # kgate.yaml — единый конфиг (клиент на ноутбуке + демон на роутере)
+# Любое поле можно переопределить переменными окружения KGATE_*:
+# KGATE_API_PORT, KGATE_DAEMON_LOG, KGATE_DAEMON_BOOT_AUTOUP и т.д. (см. docs/admin/configuration.md)
 # Скопируй в ~/.kgate/kgate.yaml или рядом с бинарником.
 
 host: 192.168.1.1
