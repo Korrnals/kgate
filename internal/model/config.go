@@ -5,18 +5,19 @@ import (
 	"time"
 )
 
-// Config — единый файл конфигурации kgate (kgate.yaml).
-// Одна и та же залита на роутер и лежит на ноутбуке: клиенту/деплойеру важны
-// секции host/api, демону на роутере — секции api/daemon.
+// Config is the single kgate configuration file (kgate.yaml).
+// The same file lives on the router and on the operator workstation:
+// the client/deployer read the host/api sections, the daemon on the
+// router reads the api/daemon sections.
 type Config struct {
-	Host    string `yaml:"host"`     // адрес роутера (клиент/деплой)
-	SSHPort int    `yaml:"ssh_port"` // ssh для деплоя
+	Host    string `yaml:"host"`     // router address (client/deployer)
+	SSHPort int    `yaml:"ssh_port"` // ssh used by the deployer
 	SSHUser string `yaml:"ssh_user"`
 	SSHKey  string `yaml:"ssh_key"`
 
 	API struct {
-		Port  int    `yaml:"port"`  // порт демона на роутере (mTLS)
-		CA    string `yaml:"ca"`    // локальные пути клиента
+		Port  int    `yaml:"port"`  // daemon mTLS API port on the router
+		CA    string `yaml:"ca"`    // local client cert paths
 		Cert  string `yaml:"cert"`
 		Key   string `yaml:"key"`
 	} `yaml:"api"`
@@ -31,11 +32,11 @@ type Config struct {
 		RelayListen   string `yaml:"relay_listen"`
 		RelayUpstream string `yaml:"relay_upstream"`
 		RlimitNofile  uint64 `yaml:"rlimit_nofile"`
-		Interval      string `yaml:"supervisor_interval"` // тик супервизора
-		BootAutoup    bool   `yaml:"boot_autoup"`         // поднимать Proxy0 при старте
+		Interval      string `yaml:"supervisor_interval"` // supervisor tick
+		BootAutoup    bool   `yaml:"boot_autoup"`         // raise Proxy0 after startup
 		AutoupDelay   string `yaml:"autoup_delay"`
 		APIListen     string `yaml:"api_listen"` // ":9443"
-		WebRoot       string `yaml:"web_root"`   // CA/серт сервера на роутере
+		WebRoot       string `yaml:"web_root"`   // server CA/certs on the router
 		Log           string `yaml:"log"`
 	} `yaml:"daemon"`
 }
@@ -111,7 +112,7 @@ func (c *Config) fillDefaults() {
 	}
 }
 
-// Load читает yaml; отсутствующий файл = дефолты.
+// Load reads the YAML config; a missing file yields defaults.
 func Load(path string) (*Config, error) {
 	c := &Config{}
 	if path != "" {

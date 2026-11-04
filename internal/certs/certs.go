@@ -14,8 +14,9 @@ import (
 	"time"
 )
 
-// Ensure генерирует CA + server + client сертификаты (если их ещё нет).
-// serverCert подписывается под IP роутера и DNS kgate.
+// Ensure generates the CA + server + client certificates unless they
+// already exist. The server certificate is issued for the router IP
+// and the "kgate" DNS name.
 func Ensure(dir, routerIP string) (created bool, err error) {
 	need := []string{"ca.crt", "ca.key", "server.crt", "server.key", "client.crt", "client.key"}
 	missing := false

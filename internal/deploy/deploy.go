@@ -1,4 +1,4 @@
-// Package deploy — деплой kgate + VPN-стека на роутер по ssh.
+// Package deploy pushes kgate and the VPN stack to the router over ssh.
 package deploy
 
 import (
@@ -15,9 +15,9 @@ import (
 //go:embed payload.tgz
 var Payload []byte
 
-// S99Routerctl — init-скрипт демона (в payload).
+// S99Routerctl is the daemon init script shipped in the payload.
 const S99Script = `#!/bin/sh
-# {kgate} демон-супервизор VPN-стека (замена S99sing-box/watchdog/boot-autoup)
+# {kgate} VPN-stack supervisor daemon (replaces S99sing-box/watchdog/boot-autoup)
 DAEMON=/opt/sbin/kgate
 CFG=/opt/etc/kgate/kgate.yaml
 PIDFILE=/opt/var/run/kgate.pid
@@ -106,7 +106,7 @@ opkg list-installed | grep -E "^(iptables|openssh-server) " | head -2`))
 
 func (r *Runner) Migrate() {
 	fmt.Println("=== migrate: legacy-обвязка -> демон ===")
-	// 0) предыдущая установка routerctl (если есть) — глушим, демон kgate подхватит стек
+	// 0) retire a previous routerctl install (if any); the kgate daemon takes over the stack
 	fmt.Print(r.SSH(`[ -f /opt/etc/init.d/S99routerctl ] && { /opt/etc/init.d/S99routerctl stop 2>/dev/null; mv /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled; }
 rm -f /opt/var/run/routerctl*.pid /opt/var/run/routerctl.pid
 true`))

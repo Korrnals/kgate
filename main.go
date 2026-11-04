@@ -62,7 +62,7 @@ func main() {
 			if only("files") {
 				r.Files()
 			}
-			if only("files") { // миграция legacy — часть files
+			if only("files") { // legacy migration is part of the files stage
 				r.Migrate()
 			}
 			if only("config") {

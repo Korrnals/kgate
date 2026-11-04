@@ -1,8 +1,9 @@
-// Package daemon — серверная часть kgate: супервизор VPN-стека + mTLS API.
-// Заменяет обвязку: S99sing-box, rc-redirect v5, rc-redirect-watchdog, boot-autoup.
-// Работает на роутере как root (iptables/ndmc). Один тик супервизора:
-//   1. убедиться, что sing-box и xray живы (рестарт с бэкоффом, RLIMIT_NOFILE)
-//   2. убедиться, что DNS-цепочка SBREDIRECT в nat на месте (ndm любит её сносить)
+// Package daemon is the server side of kgate: the VPN-stack supervisor plus
+// the mTLS API. It replaces the legacy glue (S99sing-box, rc-redirect v5,
+// rc-redirect-watchdog, boot-autoup). Runs on the router as root
+// (iptables/ndmc). Every supervisor tick:
+//   1. make sure sing-box is alive (restart with backoff, inherited RLIMIT_NOFILE)
+//   2. make sure the SBREDIRECT DNS chain survives in nat (ndm likes to wipe it)
 package daemon
 
 import (
@@ -34,7 +35,7 @@ func New(cfg *model.Config) *Daemon {
 	return &Daemon{cfg: cfg, mgr: newProcManager(cfg)}
 }
 
-// ---- системные вызовы-обёртки ----
+// ---- shell wrappers ----
 
 func sh(script string) string {
 	cmd := exec.Command("/bin/sh", "-c", script)
@@ -46,8 +47,9 @@ func sh(script string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// daemonEnv — детерминированное окружение: при буте rc.unslung может дать урезанный env,
-// из-за чего ndmc/grep в статус-скриптах вели себя иначе, чем при рестарте из ssh.
+// daemonEnv returns a deterministic environment: rc.unslung may hand a
+// stripped env at boot, making ndmc/grep inside status scripts behave
+// differently compared to a restart from an ssh session.
 func daemonEnv() []string {
 	return []string{
 		"PATH=/opt/bin:/opt/sbin:/opt/usr/bin:/opt/usr/sbin:/sbin:/usr/sbin:/bin:/usr/bin",
@@ -60,7 +62,7 @@ func (d *Daemon) ndmc(cmd string) string {
 	return sh(`/bin/ndmc -c "` + strings.ReplaceAll(cmd, `"`, `\"`) + `"`)
 }
 
-// ---- процесс-менеджер ----
+// ---- process manager ----
 
 type proc struct {
 	name    string
@@ -75,7 +77,7 @@ type proc struct {
 func newProcManager(cfg *model.Config) *procManager {
 	d := cfg.Daemon
 	m := &procManager{cfg: cfg}
-	// xray больше не используется: его заменил собственный толерантный socks-relay (:1090).
+	// xray is no longer used: replaced by the built-in tolerant SOCKS relay (:1090).
 	m.procs = []*proc{
 		{name: "sing-box", bin: d.SingBoxBin, args: []string{"run", "-c", d.SingBoxConfig}, logfile: d.SingBoxLog,
 			pidfile: "/opt/var/run/kgate-singbox.pid"},
@@ -101,7 +103,7 @@ func (m *procManager) alive(p *proc) bool {
 	if err != nil {
 		return false
 	}
-	// зомби висит в /proc но не живой — не считать рабочим
+	// a zombie sits in /proc but is not running — do not count it as alive
 	for _, l := range strings.Split(string(st), "\n") {
 		if strings.HasPrefix(l, "State:") && strings.Contains(l, "Z") {
 			return false
@@ -116,8 +118,9 @@ func (m *procManager) start(p *proc) error {
 		return err
 	}
 	defer logf.Close()
-	// FD-лимит выставлен на ДЕМОНЕ (unix.Setrlimit в Run) — дети наследуют.
-	// (SysProcAttr.Rlimit отсутствует на arm64, sh-wrap с ulimit busybox ash не переваривает.)
+	// the FD limit is set on the DAEMON (unix.Setrlimit in Run) — children inherit it.
+	// (SysProcAttr.Rlimit is unavailable on arm64, and busybox ash chokes on the
+	// sh-wrap ulimit form.)
 	cmd := exec.Command(p.bin, p.args...)
 	cmd.Stdout = logf
 	cmd.Stderr = logf
@@ -125,7 +128,7 @@ func (m *procManager) start(p *proc) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	// reaper: забирать статус умершего ребёнка (иначе зомби в /proc врёт alive)
+	// reaper: collect the exit status of a dead child (otherwise zombies in /proc lie to alive)
 	go cmd.Wait()
 	p.cmd = cmd
 	p.backoff = 0
@@ -134,7 +137,7 @@ func (m *procManager) start(p *proc) error {
 
 
 func (m *procManager) killAll() {
-	// по ps (killall в busybox ненадёжен для наших имён)
+	// via ps (busybox killall is unreliable for these names)
 	out := sh(`ps w | grep -E "sing-box|xray" | grep -v grep | awk "{print \$1}"`)
 	for _, s := range strings.Fields(out) {
 		if pid, err := strconv.Atoi(s); err == nil && pid != os.Getpid() {
@@ -152,7 +155,7 @@ func (m *procManager) ensure() []string {
 	for _, p := range m.procs {
 		wasAlive := m.alive(p)
 		if wasAlive {
-			if p.backoff != 0 { // только переходDead->Alive логируем
+			if p.backoff != 0 { // log only the Dead->Alive transition
 				report = append(report, p.name+": running (восстановлен)")
 				p.backoff = 0
 			}
@@ -176,7 +179,7 @@ func (m *procManager) ensure() []string {
 	return report
 }
 
-// ---- iptables DNS-DNAT (rc-redirect v5, внутри демона) ----
+// ---- iptables DNS-DNAT (the former rc-redirect v5, now inside the daemon) ----
 
 const wanDNS = "77.88.8.8"
 
@@ -199,7 +202,7 @@ func (d *Daemon) iptablesApply() string {
 echo dns-rules-applied`)
 }
 
-// ---- туннель ----
+// ---- tunnel ----
 
 func (d *Daemon) toggle(state string) string {
 	return d.ndmc("interface Proxy0 " + state)
@@ -215,7 +218,7 @@ func (d *Daemon) proxyState() string {
 	return "state: unknown"
 }
 
-// ждать порт sing-box (для автоподъёма туннеля без гонки)
+// waitPort blocks until the sing-box port accepts connections (avoids the boot race)
 func (d *Daemon) waitPort(addr string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -229,7 +232,7 @@ func (d *Daemon) waitPort(addr string, timeout time.Duration) bool {
 	return false
 }
 
-// ---- статус/верификация ----
+// ---- status / verification ----
 
 type Status struct {
 	SingBox  string `json:"singbox"`
@@ -302,11 +305,11 @@ func (d *Daemon) setClashMode(mode string) error {
 	return lastErr
 }
 
-// ---- главный цикл ----
+// ---- main loop ----
 
 func (d *Daemon) Run() error {
 	fmt.Println("kgate daemon: старт, тик", d.cfg.Daemon.Interval)
-	// FD-лимит на себя: дети (sing-box/xray) наследуют. Двухступенчато: hard, потом soft.
+	// FD limit on the daemon itself: children inherit it. Two steps: hard first, then soft.
 	lim := unix.Rlimit{Cur: d.cfg.Daemon.RlimitNofile * 2, Max: d.cfg.Daemon.RlimitNofile * 2}
 	if err := unix.Setrlimit(unix.RLIMIT_NOFILE, &lim); err != nil {
 		fmt.Println("setrlimit hard:", err)
@@ -324,7 +327,7 @@ func (d *Daemon) Run() error {
 		}
 	}
 
-	// один раз при старте: чистим чужие процессы и берём управление на себя
+	// once at startup: clear foreign processes and take ownership of the stack
 	d.mgr.killAll()
 	logger("supervisor: принял стек (sing-box + xray)")
 	d.mgr.ensure()
@@ -336,7 +339,7 @@ func (d *Daemon) Run() error {
 	}
 	logger("supervisor: dns-rules применены")
 
-	go func() { // автоподъём туннеля: ждём :1080, потом up (без гонки с Entware)
+	go func() { // tunnel auto-raise: wait for :1080, then up (no Entware race)
 		if !d.cfg.Daemon.BootAutoup {
 			return
 		}

@@ -1,4 +1,4 @@
-// Package client — mTLS-клиент к демону kgate на роутере.
+// Package client is the mTLS client for the kgate daemon running on the router.
 package client
 
 import (
@@ -112,7 +112,7 @@ func Reboot(c *model.Config) {
 	req, _ := http.NewRequest("POST", fmt.Sprintf("https://%s:%d/api/v1/reboot", c.Host, c.API.Port), nil)
 	resp, err := httpc(c).Do(req)
 	if err != nil {
-		// обрыв при ребуте — ожидаемое поведение (демон падает вместе с ndm)
+		// connection drop during reboot is expected: the daemon goes down with ndm
 		fmt.Println("reboot: команда принята (обрыв соединения нормален, роутер ребутается ~2 мин); затем: kgate status")
 		return
 	}

@@ -1,8 +1,8 @@
-// Толерантный SOCKS-ретранслятор: единственная цель — быть совместимым
-// с кривым клиентом ndm (BadVPN tun2socks + InternetChecker), который шлёт
-// нестандартный SOCKS-verb («command 5») и не проходит строгие серверы
-// (sing-box/xray отвергают). Этот listener принимает ЛЮБОЙ command,
-// отвечает успехом и транслирует соединение в CONNECT к sing-box.
+// Tolerant SOCKS relay. Its only purpose is compatibility with the broken
+// ndm client (BadVPN tun2socks + InternetChecker), which sends a non-standard
+// SOCKS verb ("command 5") that strict servers reject (sing-box/xray).
+// This listener accepts ANY command, replies with success and translates
+// the connection into a CONNECT towards sing-box.
 package daemon
 
 import (
@@ -45,7 +45,7 @@ func (d *Daemon) relayListen(addr, upstream string) error {
 func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 	defer conn.Close()
 	defer func() {
-		// плохой probe/клиент не должен валить весь демон
+		// a malformed probe/client must never take the whole daemon down
 		if r := recover(); r != nil {
 			fmt.Println("relay: recovered:", r)
 		}
@@ -56,16 +56,16 @@ func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 			f.Close()
 		}
 	}
-	conn.SetDeadline(time.Now().Add(10 * time.Second)) // только на хендшейк
+	conn.SetDeadline(time.Now().Add(10 * time.Second)) // handshake phase only
 
-	// 1) greeting: VER, NMETHODS, METHODS... — принимаем как есть, отвечаем "no auth"
+	// 1) greeting: VER, NMETHODS, METHODS... accepted as-is, reply "no auth"
 	head := make([]byte, 2)
 	if _, err := io.ReadFull(conn, head); err != nil {
 		logl("greeting read err: " + err.Error())
 		return
 	}
 	if head[0] != 5 {
-		logl("не SOCKS5 — закрыл")
+		logl("not SOCKS5 - closing")
 		return
 	}
 	n := int(head[1])
@@ -78,8 +78,8 @@ func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 		return
 	}
 
-	// 2) request: VER CMD RSV ATYP ADDR PORT — CMD игнорируем (в т.ч. «command 5»),
-	//    любой запрос транслируем в CONNECT к цели
+	// 2) request: VER CMD RSV ATYP ADDR PORT — the command byte is ignored
+	//    (including "command 5"); every request is translated into a CONNECT
 	req := make([]byte, 4)
 	if _, err := io.ReadFull(conn, req); err != nil {
 		return
@@ -112,7 +112,7 @@ func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 		}
 		host = net.IP(b).String()
 	default:
-		logl("неизвестный ATYP " + strconv.Itoa(int(req[3])))
+		logl("unknown ATYP " + strconv.Itoa(int(req[3])))
 		return
 	}
 	portB := make([]byte, 2)
@@ -121,14 +121,14 @@ func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 	}
 	port := binary.BigEndian.Uint16(portB)
 
-	// 3) успех клиенту (bogus bind) — после этого трафик прозрачен
+	// 3) success to the client (bogus bind) — the traffic stream is transparent after this
 	if _, err := conn.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
 		return
 	}
-	logl(fmt.Sprintf("cmd=%d %s:%d -> upstream ok клиенту", req[1], host, port))
-	conn.SetDeadline(time.Time{}) // снять хендшейк-таймаут
+	logl(fmt.Sprintf("cmd=%d %s:%d -> upstream accepted", req[1], host, port))
+	conn.SetDeadline(time.Time{}) // clear the handshake deadline
 
-	// 4) CONNECT к sing-box тем же целевым адресом
+	// 4) CONNECT to sing-box with the same target address
 	up, err := net.DialTimeout("tcp", upstream, 5*time.Second)
 	if err != nil {
 		logl("upstream dial err: " + err.Error())
@@ -160,7 +160,7 @@ func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 	if _, err := up.Write(req2); err != nil {
 		return
 	}
-	// ответ sing-box на CONNECT: VER REP RSV ATYP ADDR PORT
+	// sing-box CONNECT reply: VER REP RSV ATYP ADDR PORT
 	rspHdr := make([]byte, 4)
 	if _, err := io.ReadFull(up, rspHdr); err != nil {
 		return
@@ -179,7 +179,7 @@ func (d *Daemon) relayHandle(conn net.Conn, upstream string) {
 	}
 	up.SetDeadline(time.Time{})
 
-	// 5) труба
+	// 5) pipe
 	done := make(chan struct{}, 2)
 	go func() { io.Copy(up, conn); done <- struct{}{} }()
 	go func() { io.Copy(conn, up); done <- struct{}{} }()
