@@ -160,7 +160,7 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 
 func (r *Runner) NDM() {
 	fmt.Println("=== ndm: Proxy0, pins, DNS, политики ===")
-	fmt.Print(r.SSH(`sh /opt/etc/ndm-commands.sh`))
+	fmt.Print(r.SSH(`KGATE_SERVER_IP="` + r.c.ServerIP + `" sh /opt/etc/ndm-commands.sh 2>&1 || echo "ndm-commands.sh missing - run kgate files first"`))
 }
 
 func (r *Runner) Services() {
