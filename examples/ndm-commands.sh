@@ -5,6 +5,8 @@
 
 # --- Proxy0 (туннель-переключатель; ndm создаёт интерфейс при первом set) ---
 ndmc -c "interface Proxy0 description \"HYST VPN (sing-box)\""
+ndmc -c "interface Proxy0"
+ndmc -c "interface Proxy0 description \"HYST VPN (sing-box)\""
 ndmc -c "interface Proxy0 security-level public"
 ndmc -c "interface Proxy0 ip global 800"
 ndmc -c "interface Proxy0 proxy protocol socks5"
