@@ -39,10 +39,12 @@ build: payload
 	go build -ldflags "$(LDFLAGS)" -o kgate .
 
 # релизные Go-бинари: демон/клиент для роутера (arm64) и оператора (amd64)
+# CGO_ENABLED=0 — оба бинаря должны быть статическими Go-исполняемыми файлами
+# (без пина нативная amd64-сборка линкуется динамически через cgo)
 release-binaries: ensure-empty
 	@mkdir -p dist
-	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/kgate-$(VERSION)-linux-arm64 .
-	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/kgate-$(VERSION)-linux-amd64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/kgate-$(VERSION)-linux-arm64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/kgate-$(VERSION)-linux-amd64 .
 	@ls -la dist/
 
 # Entware .ipk: бинарник + init-скрипт + конфиг-пример; ставится opkg install
