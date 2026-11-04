@@ -12,7 +12,10 @@ ndmc -c "interface Proxy0 proxy upstream 127.0.0.1 1090"
 ndmc -c "interface Proxy0 proxy connect via ISP"
 
 # --- route-pins (без них трафик sing-box ловится политикой -> петля) ---
-ndmc -c "ip route SERVER_IP ISP"
+SERVER_IP="${KGATE_SERVER_IP:?KGATE_SERVER_IP is not set}"
+ndmc -c "no ip route $SERVER_IP ISP"
+ndmc -c "no ip route 77.88.8.8 ISP"
+ndmc -c "ip route $SERVER_IP ISP"
 ndmc -c "ip route 77.88.8.8 ISP"
 
 # --- DNS: Яндекс напрямую (обход DNS-подавления ТСПУ) ---

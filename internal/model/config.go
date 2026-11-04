@@ -10,7 +10,8 @@ import (
 // the client/deployer read the host/api sections, the daemon on the
 // router reads the api/daemon sections.
 type Config struct {
-	Host    string `yaml:"host"`     // router address (client/deployer)
+	Host     string `yaml:"host"`      // router address (client/deployer)
+	ServerIP string `yaml:"server_ip"` // hy2 exit server IP (used for the ndm route pin)
 	SSHPort int    `yaml:"ssh_port"` // ssh used by the deployer
 	SSHUser string `yaml:"ssh_user"`
 	SSHKey  string `yaml:"ssh_key"`
