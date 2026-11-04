@@ -54,7 +54,7 @@ chmod 0755 build/ipk/CONTROL/postinst
 printf '2.0\n' > build/ipk/debian-binary
 
 (cd build/ipk/CONTROL && tar -czf ../control.tar.gz .)
-(cd build/ipk && tar -czf ../data.tar.gz ./opt ./CONTROL/conffiles)
+(cd build/ipk && tar -czf data.tar.gz ./opt ./CONTROL/conffiles)
 (cd build/ipk && ar rc kgate.ipk debian-binary control.tar.gz data.tar.gz)
 mv build/ipk/kgate.ipk "$PKG"
 rm -rf build/ipk
