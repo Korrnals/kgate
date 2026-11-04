@@ -25,7 +25,7 @@ cp "${ETC_DIR:-examples/etc}/ssh/authorized_keys" build/root/opt/etc/ssh/authori
 if curl -sSL --max-time 60 -o build/rulesets.zip "$RULESETS_URL"; then
   unzip -o -j build/rulesets.zip '*.srs' -d build/ipk/opt/etc/sing-box/rulesets/ >/dev/null 2>&1 || true
 fi
-N=$(ls build/ipk/opt/etc/sing-box/rulesets/*.srs 2>/dev/null | wc -l)
+N=$(find build/ipk/opt/etc/sing-box/rulesets -name '*.srs' 2>/dev/null | wc -l)
 echo "rulesets в пакете: $N"
 
 # CONTROL
