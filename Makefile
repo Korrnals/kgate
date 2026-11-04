@@ -50,7 +50,7 @@ release-binaries: ensure-empty
 
 # Entware .ipk: бинарник + init-скрипт + конфиг-пример; ставится opkg install
 ipk: release-binaries build/sing-box
-	@scripts/build-ipk.sh $(VERSION) build/sing-box
+	@scripts/build-ipk.sh $(VERSION) dist/kgate-$(VERSION)-linux-arm64 build/sing-box
 
 install-cli: build
 	@mkdir -p ~/.local/bin && cp kgate ~/.local/bin/ && echo "установлен: ~/.local/bin/kgate"

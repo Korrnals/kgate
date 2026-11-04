@@ -6,6 +6,8 @@ internal/deploy/payload-empty.tgz
 
 # реальные конфиги и материалы (секреты, ключи, rulesets)
 local/
+/kgate.yaml
+/HANDOFF.md
 
 # служебное
 *.log
