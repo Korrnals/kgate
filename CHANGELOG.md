@@ -20,6 +20,9 @@ feed and API pages).
   Entware-compatible feed (`Packages`, `Packages.gz`, `.ipk`) from
   `dist/`, enabling `opkg install kgate` from any HTTP host; the feed
   is published as the public `kgate-feed` repository.
+- `KGATE_*` environment variable overrides: configuration values can
+  be set or replaced via environment variables that take precedence
+  over `kgate.yaml` (documented in `docs/admin/configuration.md`).
 - Documentation: glossary (`docs/glossary.md`), an admin guide for the
   opkg feed (`docs/admin/opkg-feed.md`), and dedicated mTLS API
   endpoint references (`docs/api/endpoints-*.md`); all pages restyled
