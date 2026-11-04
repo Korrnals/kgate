@@ -74,6 +74,10 @@ func main() {
 			if only("services") {
 				r.Services()
 			}
+			if r.Failures() > 0 {
+				fmt.Printf("apply завершён С ОШИБКАМИ (%d стадий/шагов) — см. лог выше\n", r.Failures())
+				os.Exit(1)
+			}
 			if !dryRun && onlyStage == "all" {
 				fmt.Println("=== ждём демона и верифицируем ===")
 				time.Sleep(5 * time.Second)

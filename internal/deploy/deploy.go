@@ -39,14 +39,16 @@ esac
 `
 
 type Runner struct {
-	c    *model.Config
-	dry  bool
-	SSH  func(script string) string
-	Upld func(data []byte, remoteCmd string) error
+	c        *model.Config
+	dry      bool
+	SSH      func(script string) string
+	Upld     func(data []byte, remoteCmd string) error
+	Failures func() int
 }
 
 func New(c *model.Config, dry bool) *Runner {
 	r := &Runner{c: c, dry: dry}
+	failures := 0
 	r.SSH = func(script string) string {
 		if dry {
 			fmt.Println("DRY ssh:", script)
@@ -57,11 +59,12 @@ func New(c *model.Config, dry bool) *Runner {
 			"-o", "BatchMode=yes", c.SSHUser + "@" + c.Host, script}
 		out, err := exec.Command("ssh", args...).CombinedOutput()
 		if err != nil {
-			fmt.Printf("FAIL ssh: %v\n%s\n", err, string(out))
-			os.Exit(1)
+			failures++
+			fmt.Printf("STAGE ERROR (%d): %v\n%s\n", failures, err, string(out))
 		}
 		return string(out)
 	}
+	r.Failures = func() int { return failures }
 	r.Upld = func(data []byte, remoteCmd string) error {
 		if dry {
 			fmt.Println("DRY upload", len(data), "bytes ->", remoteCmd)
