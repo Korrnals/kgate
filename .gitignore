@@ -1,0 +1,12 @@
+# сборка
+kgate
+build/
+internal/deploy/payload.tgz
+internal/deploy/payload-empty.tgz
+
+# реальные конфиги и материалы (секреты, ключи, rulesets)
+local/
+
+# служебное
+*.log
+dist/

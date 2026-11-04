@@ -1,0 +1,121 @@
+{
+  "log": {
+    "level": "warn"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "proxy-in",
+      "listen": "0.0.0.0",
+      "listen_port": 1080
+    },
+    {
+      "type": "redirect",
+      "tag": "redirect-in",
+      "sniff": true,
+      "listen": "0.0.0.0",
+      "listen_port": 1081
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hy2-out",
+      "server": "hy2.example.com",
+      "server_port": 443,
+      "password": "HY2_PASSWORD",
+      "obfs": {
+        "type": "salamander",
+        "password": "HY2_PASSWORD"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "hy2.example.com",
+        "insecure": false
+      }
+    },
+    {
+      "type": "direct",
+      "bind_interface": "eth3",
+      "tag": "direct"
+    }
+  ],
+  "dns": {
+    "servers": [
+      {
+        "tag": "yandex",
+        "address": "udp://77.88.8.8",
+        "detour": "direct"
+      }
+    ],
+    "final": "yandex"
+  },
+  "route": {
+    "rules": [
+      {
+        "clash_mode": "Global",
+        "outbound": "hy2-out"
+      },
+      {
+        "clash_mode": "Direct",
+        "outbound": "direct"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geosite-category-media-ru-blocked"
+        ],
+        "outbound": "hy2-out"
+      },
+      {
+        "rule_set": [
+          "geosite-category-ru"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "geoip-ru"
+        ],
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "geosite-category-ru",
+        "format": "binary",
+        "path": "/opt/etc/sing-box/rulesets/geosite-category-ru.srs"
+      },
+      {
+        "type": "local",
+        "tag": "geosite-category-media-ru-blocked",
+        "format": "binary",
+        "path": "/opt/etc/sing-box/rulesets/geosite-category-media-ru-blocked.srs"
+      },
+      {
+        "type": "local",
+        "tag": "geoip-ru",
+        "format": "binary",
+        "path": "/opt/etc/sing-box/rulesets/geoip-ru.srs"
+      }
+    ],
+    "final": "hy2-out"
+  },
+  "experimental": {
+    "clash_api": {
+      "external_controller": "192.168.1.1:9090",
+      "external_ui": "/opt/etc/sing-box/ui",
+      "external_ui_download_url": "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed.zip",
+      "external_ui_download_detour": "direct",
+      "default_mode": "Rule"
+    },
+    "cache_file": {
+      "enabled": true,
+      "path": "/opt/var/cache.db"
+    }
+  }
+}

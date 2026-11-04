@@ -1,0 +1,171 @@
+// Package deploy — деплой kgate + VPN-стека на роутер по ssh.
+package deploy
+
+import (
+	"bytes"
+	_ "embed"
+	"fmt"
+	"os"
+	"os/exec"
+
+	"kgate/internal/certs"
+	"kgate/internal/model"
+)
+
+//go:embed payload.tgz
+var Payload []byte
+
+// S99Routerctl — init-скрипт демона (в payload).
+const S99Script = `#!/bin/sh
+# {kgate} демон-супервизор VPN-стека (замена S99sing-box/watchdog/boot-autoup)
+DAEMON=/opt/sbin/kgate
+CFG=/opt/etc/kgate/kgate.yaml
+PIDFILE=/opt/var/run/kgate.pid
+case "$1" in
+  start)
+    if [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ]; then echo "kgate already running"; exit 0; fi
+    $DAEMON serve -c $CFG >> /opt/var/log/kgate-boot.log 2>&1 &
+    echo $! > $PIDFILE
+    echo "kgate daemon started"
+    ;;
+  stop)
+    [ -f $PIDFILE ] && kill $(cat $PIDFILE) 2>/dev/null; rm -f $PIDFILE
+    killall kgate 2>/dev/null
+    echo "kgate stopped" ;;
+  status)
+    [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ] && echo running || echo stopped ;;
+  *) echo "usage: $0 {start|stop|status}" ;;
+esac
+`
+
+type Runner struct {
+	c    *model.Config
+	dry  bool
+	SSH  func(script string) string
+	Upld func(data []byte, remoteCmd string) error
+}
+
+func New(c *model.Config, dry bool) *Runner {
+	r := &Runner{c: c, dry: dry}
+	r.SSH = func(script string) string {
+		if dry {
+			fmt.Println("DRY ssh:", script)
+			return ""
+		}
+		args := []string{"-p", fmt.Sprint(c.SSHPort), "-i", c.SSHKey,
+			"-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10",
+			"-o", "BatchMode=yes", c.SSHUser + "@" + c.Host, script}
+		out, err := exec.Command("ssh", args...).CombinedOutput()
+		if err != nil {
+			fmt.Printf("FAIL ssh: %v\n%s\n", err, string(out))
+			os.Exit(1)
+		}
+		return string(out)
+	}
+	r.Upld = func(data []byte, remoteCmd string) error {
+		if dry {
+			fmt.Println("DRY upload", len(data), "bytes ->", remoteCmd)
+			return nil
+		}
+		args := []string{"-p", fmt.Sprint(c.SSHPort), "-i", c.SSHKey,
+			"-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10",
+			"-o", "BatchMode=yes", c.SSHUser + "@" + c.Host, remoteCmd}
+		cmd := exec.Command("ssh", args...)
+		cmd.Stdin = bytes.NewReader(data)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("%v: %s", err, string(out))
+		}
+		return nil
+	}
+	return r
+}
+
+func (r *Runner) Files() {
+	fmt.Println("=== files: payload (kgate arm64 + sing-box + конфиги) ===")
+	if err := r.Upld(Payload, `cat > /tmp/payload.tgz`); err != nil {
+		fmt.Println("FAIL upload:", err)
+		os.Exit(1)
+	}
+	fmt.Print(r.SSH(`mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
+mv -f kgate-arm64 /opt/sbin/kgate
+mv -f sing-box /opt/sbin/sing-box
+mv -f ndm-commands.sh /opt/etc/ndm-commands.sh
+mv -f S99kgate /opt/etc/init.d/S99kgate
+mkdir -p /opt/etc/sing-box/rulesets
+cp -f opt/etc/sing-box/config.json /opt/etc/sing-box/config.json
+cp -f opt/etc/sing-box/rulesets/*.srs /opt/etc/sing-box/rulesets/ 2>/dev/null
+cp -f opt/etc/ssh/authorized_keys /opt/etc/ssh/authorized_keys
+grep -q "^sshd:" /opt/etc/passwd || cat opt/etc/passwd >> /opt/etc/passwd
+chmod +x /opt/sbin/kgate /opt/sbin/sing-box /opt/etc/init.d/S99kgate
+rm -rf /tmp/px /tmp/payload.tgz
+mkdir -p /opt/etc/kgate /opt/etc/ssh /opt/var/log /opt/var/run
+/opt/sbin/kgate version | head -1
+opkg update >/dev/null 2>&1; for p in iptables openssh-server ca-bundle; do opkg list-installed | grep -q "^$p " || opkg install $p; done
+opkg list-installed | grep -E "^(iptables|openssh-server) " | head -2`))
+}
+
+func (r *Runner) Migrate() {
+	fmt.Println("=== migrate: legacy-обвязка -> демон ===")
+	// 0) предыдущая установка routerctl (если есть) — глушим, демон kgate подхватит стек
+	fmt.Print(r.SSH(`[ -f /opt/etc/init.d/S99routerctl ] && { /opt/etc/init.d/S99routerctl stop 2>/dev/null; mv /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled; }
+rm -f /opt/var/run/routerctl*.pid /opt/var/run/routerctl.pid
+true`))
+	fmt.Print(r.SSH(`
+# 1) старый S99sing-box под замок (иначе задвоит sing-box с демоном)
+[ -f /opt/etc/init.d/S99sing-box ] && mv /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled
+# 2) удалить legacy-строки из rc.unslung (watchdog/apply/boot-autoup теперь внутри демона)
+grep -vE "(rc-redirect|boot-autoup|\{kgate\})" /opt/etc/init.d/rc.unslung > /tmp/rcu && cat /tmp/rcu > /opt/etc/init.d/rc.unslung && rm /tmp/rcu
+# 3) убить старый watchdog и его инстансы
+for P in $(ps w | grep rc-redirect-watchdog | grep -v grep | awk "{print \$1}"); do kill $P 2>/dev/null; done
+# 4) xray больше не нужен (заменил relay в kgate)
+[ -f /opt/etc/init.d/S24xray ] && mv /opt/etc/init.d/S24xray /opt/etc/init.d/S24xray.disabled
+killall xray 2>/dev/null
+echo "legacy disabled"`))
+}
+
+func (r *Runner) ConfigAndCerts(cfg *model.Config) {
+	fmt.Println("=== config + mTLS certs ===")
+	yml, _ := yamlMarshal(cfg)
+	if err := r.Upld(yml, `mkdir -p /opt/etc/kgate && cat > /opt/etc/kgate/kgate.yaml`); err != nil {
+		fmt.Println("FAIL config upload:", err)
+		os.Exit(1)
+	}
+	created, err := certs.Ensure(homeDir()+"/.kgate", cfg.Host)
+	if err != nil {
+		fmt.Println("FAIL certs:", err)
+		os.Exit(1)
+	}
+	fmt.Println("certs:", map[bool]string{true: "сгенерированы новые", false: "переиспользованы существующие"}[created])
+	home := homeDir()
+	for _, pair := range [][2]string{
+		{home + "/.kgate/ca.crt", "/opt/etc/kgate/ca.crt"},
+		{home + "/.kgate/server.crt", "/opt/etc/kgate/server.crt"},
+		{home + "/.kgate/server.key", "/opt/etc/kgate/server.key"},
+	} {
+		b, err := os.ReadFile(pair[0])
+		if err != nil {
+			fmt.Println("FAIL read", pair[0], err)
+			os.Exit(1)
+		}
+		if err := r.Upld(b, `cat > `+pair[1]); err != nil {
+			fmt.Println("FAIL cert upload:", err)
+			os.Exit(1)
+		}
+	}
+	fmt.Print(r.SSH(`chmod 600 /opt/etc/kgate/server.key`))
+}
+
+func (r *Runner) NDM() {
+	fmt.Println("=== ndm: Proxy0, pins, DNS, политики ===")
+	fmt.Print(r.SSH(`sh /opt/etc/ndm-commands.sh`))
+}
+
+func (r *Runner) Services() {
+	fmt.Println("=== services: S99kgate start (демон берёт стек) ===")
+	fmt.Print(r.SSH(`/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`))
+}
+
+func (r *Runner) Preflight() {
+	fmt.Println("=== preflight ===")
+	fmt.Print(r.SSH(`test -d /opt/etc/init.d || { echo "Entware NOT mounted"; exit 1; }; cat /proc/uptime | awk "{print \"uptime: \" \$1 \"s\"}"`))
+}

@@ -1,0 +1,20 @@
+#!/bin/sh
+# {kgate} демон-супервизор VPN-стека (замена S99sing-box/watchdog/boot-autoup)
+DAEMON=/opt/sbin/kgate
+CFG=/opt/etc/kgate/kgate.yaml
+PIDFILE=/opt/var/run/kgate.pid
+case "$1" in
+  start)
+    if [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ]; then echo "kgate already running"; exit 0; fi
+    $DAEMON serve -c $CFG >> /opt/var/log/kgate-boot.log 2>&1 &
+    echo $! > $PIDFILE
+    echo "kgate daemon started"
+    ;;
+  stop)
+    [ -f $PIDFILE ] && kill $(cat $PIDFILE) 2>/dev/null; rm -f $PIDFILE
+    killall kgate 2>/dev/null
+    echo "kgate stopped" ;;
+  status)
+    [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ] && echo running || echo stopped ;;
+  *) echo "usage: $0 {start|stop|status}" ;;
+esac

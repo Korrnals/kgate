@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="KGATE — Home VPN Gateway Supervisor">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#101a2e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4fc3f7"/>
+      <stop offset="1" stop-color="#7c8cff"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f4f7fb"/>
+      <stop offset="1" stop-color="#c3d3ea"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1b2a45" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg)"/>
+  <rect width="1200" height="300" fill="url(#grid)" opacity="0.5"/>
+
+  <!-- туннельные арки (справа) -->
+  <g fill="none" stroke="url(#accent)" stroke-width="3" opacity="0.75">
+    <ellipse cx="1030" cy="150" rx="180" ry="95"/>
+    <ellipse cx="1030" cy="150" rx="130" ry="70" opacity="0.8"/>
+    <ellipse cx="1030" cy="150" rx="85" ry="48" opacity="0.6"/>
+    <ellipse cx="1030" cy="150" rx="45" ry="28" opacity="0.45"/>
+  </g>
+  <circle cx="1030" cy="150" r="7" fill="#4fc3f7"/>
+
+  <!-- узлы сети -->
+  <g stroke="#2a3c60" stroke-width="1.5">
+    <line x1="60" y1="250" x2="180" y2="205"/>
+    <line x1="180" y1="205" x2="330" y2="250"/>
+    <line x1="60" y1="70" x2="180" y2="100"/>
+  </g>
+  <g fill="#31465f">
+    <circle cx="60" cy="250" r="4"/><circle cx="180" cy="205" r="4"/>
+    <circle cx="330" cy="250" r="4"/><circle cx="60" cy="70" r="4"/>
+    <circle cx="180" cy="100" r="4"/>
+  </g>
+
+  <!-- щит-эмблема -->
+  <g transform="translate(70,85)">
+    <path d="M55 0 L104 20 V78 C104 108 82 128 55 140 C28 128 6 108 6 78 V20 Z"
+          fill="#0e1830" stroke="url(#accent)" stroke-width="4"/>
+    <path d="M40 62 v-12 a15 15 0 0 1 30 0 v12" fill="none" stroke="#4fc3f7" stroke-width="5"/>
+    <rect x="34" y="62" width="42" height="34" rx="6" fill="none" stroke="#7c8cff" stroke-width="5"/>
+    <circle cx="55" cy="76" r="5" fill="#4fc3f7"/>
+    <line x1="55" y1="80" x2="55" y2="90" stroke="#4fc3f7" stroke-width="4"/>
+  </g>
+
+  <!-- заголовок -->
+  <text x="200" y="150" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="92" font-weight="800" letter-spacing="10" fill="url(#title)">KGATE</text>
+  <rect x="204" y="170" width="410" height="4" fill="url(#accent)"/>
+
+  <!-- подпись -->
+  <text x="204" y="212" font-family="'Segoe UI', Arial, sans-serif"
+        font-size="27" font-weight="600" fill="#a9bcdc">Home VPN Gateway Supervisor</text>
+  <text x="204" y="246" font-family="'Segoe UI', Arial, sans-serif"
+        font-size="19" fill="#5d739c">serve · apply · mTLS API · Netcraze / Keenetic</text>
+
+  <!-- бейджи -->
+  <g font-family="'Segoe UI', Arial, sans-serif" font-size="15" font-weight="600">
+    <g transform="translate(70,262)">
+      <rect width="150" height="28" rx="14" fill="#122240" stroke="#26395c"/>
+      <text x="75" y="19" text-anchor="middle" fill="#9fc0e8">supervisor</text>
+    </g>
+    <g transform="translate(232,262)">
+      <rect width="150" height="28" rx="14" fill="#122240" stroke="#26395c"/>
+      <text x="75" y="19" text-anchor="middle" fill="#9fc0e8">mTLS API</text>
+    </g>
+    <g transform="translate(394,262)">
+      <rect width="170" height="28" rx="14" fill="#122240" stroke="#26395c"/>
+      <text x="85" y="19" text-anchor="middle" fill="#9fc0e8">Entware .ipk</text>
+    </g>
+    <g transform="translate(576,262)">
+      <rect width="190" height="28" rx="14" fill="#122240" stroke="#26395c"/>
+      <text x="95" y="19" text-anchor="middle" fill="#9fc0e8">arm64 · amd64 · Go</text>
+    </g>
+  </g>
+</svg>

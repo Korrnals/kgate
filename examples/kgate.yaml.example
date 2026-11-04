@@ -1,0 +1,25 @@
+# kgate.yaml — единый конфиг (клиент на ноутбуке + демон на роутере)
+# Скопируй в ~/.kgate/kgate.yaml или рядом с бинарником.
+
+host: 192.168.1.1        # адрес роутера
+ssh_port: 222            # ssh для деплоя (kgate apply)
+ssh_user: root
+ssh_key: ~/.ssh/id_ed25519    # ключ с доступом к роутеру
+
+api:
+  port: 9443             # порт mTLS API демона на роутере
+  ca: ~/.kgate/ca.crt    # клиентские сертификаты (генерируются при kgate apply)
+  cert: ~/.kgate/client.crt
+  key: ~/.kgate/client.key
+
+daemon:                  # секция для `kgate serve` (на роутере)
+  singbox_bin: /opt/sbin/sing-box
+  singbox_config: /opt/etc/sing-box/config.json
+  singbox_log: /opt/var/log/singbox.log
+  rlimit_nofile: 8192            # FD-лимит, наследуется sing-box'ом
+  supervisor_interval: 15s       # тик супервизора (недожатые дети/dns-правила)
+  boot_autoup: true              # поднимать туннель (Proxy0) после старта
+  autoup_delay: 25s              # ждать :1080 до подъёма (без гонки с Entware)
+  api_listen: ":9443"            # mTLS API (клиентские серты обязательны)
+  web_root: /opt/etc/kgate       # ca.crt/server.crt/server.key демона
+  log: /opt/var/log/kgate.log
