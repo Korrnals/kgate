@@ -58,11 +58,11 @@ elif [ -f examples/kgate.yaml.example ]; then cp examples/kgate.yaml.example "$T
 chmod 0755 "$T/data/opt/sbin/kgate"
 
 # 4) tar внутри tar: control.tar.gz, data.tar.gz
-tar -czf "$T/control.tar.gz" -C "$T/control" control conffiles postinst
-tar -czf "$T/data.tar.gz" -C "$T/data" opt
+tar --format=ustar --owner=0 --group=0 -czf "$T/control.tar.gz" -C "$T/control" control conffiles postinst
+tar --format=ustar --owner=0 --group=0 -czf "$T/data.tar.gz" -C "$T/data" opt
 
 # 5) внешний tar + gzip = итоговый .ipk
 mkdir -p dist
-tar -czf "$PKG" -C "$T" ./debian-binary ./control.tar.gz ./data.tar.gz
+tar --format=ustar --owner=0 --group=0 -czf "$PKG" -C "$T" ./debian-binary ./control.tar.gz ./data.tar.gz
 
 echo "IPK: $PKG ($(stat -c%s "$PKG") байт)"
