@@ -5,7 +5,7 @@ host: 192.168.1.1
 server_ip: 203.0.113.10  # IP hy2 exit-сервера (для ndm route-pin)
 ssh_port: 222            # ssh для деплоя (kgate apply)
 ssh_user: root
-ssh_key: ~/.ssh/id_ed25519    # ключ с доступом к роутеру
+ssh_key: ~/.ssh/kgate-ed25519    # ключ с доступом к роутеру
 
 api:
   port: 9443             # порт mTLS API демона на роутере

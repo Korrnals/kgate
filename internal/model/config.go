@@ -53,7 +53,7 @@ func (c *Config) fillDefaults() {
 		c.SSHUser = "root"
 	}
 	if c.SSHKey == "" {
-		c.SSHKey = os.Getenv("HOME") + "/.ssh/id_ed25519"
+		c.SSHKey = os.Getenv("HOME") + "/.ssh/kgate-ed25519"
 	}
 	if c.API.Port == 0 {
 		c.API.Port = 9443
