@@ -8,6 +8,38 @@ follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.1.1] - 2026-11-04
+
+Feed and packaging release: an opkg package feed for `opkg`-native
+installs, a hardened ipk build, fully static release binaries, and a
+documentation expansion (glossary, per-section navigation, dedicated
+feed and API pages).
+
+### Added
+- opkg feed builder (`scripts/build-feed.sh`): generates an
+  Entware-compatible feed (`Packages`, `Packages.gz`, `.ipk`) from
+  `dist/`, enabling `opkg install kgate` from any HTTP host; the feed
+  is published as the public `kgate-feed` repository.
+- Documentation: glossary (`docs/glossary.md`), an admin guide for the
+  opkg feed (`docs/admin/opkg-feed.md`), and dedicated mTLS API
+  endpoint references (`docs/api/endpoints-*.md`); all pages restyled
+  with per-section navigation.
+
+### Fixed
+- ipk packaging: `data.tar.gz` is written where `ar` expects it and an
+  empty rulesets directory no longer breaks the build — the package
+  is now reliably installable.
+- Release binaries are built with `CGO_ENABLED=0`, so both the amd64
+  and arm64 builds are fully static ELF executables.
+- Deploy hardening: stages continue on error and report failures at
+  the end, payload root paths corrected, `KGATE_SERVER_IP` passed to
+  the ndm-commands stage, `Proxy0` created if absent, `S99kgate` and
+  `ndm-commands.sh` shipped in the payload, and the ndm route-pin
+  parameterized via the server IP (sanitized example no longer
+  carries a placeholder).
+- Default SSH key for the managed router changed to `kgate-ed25519`
+  (agent-independent).
+
 ## [1.1.0] - 2026-11-04
 
 Documentation and onboarding release: a topic docs tree, a one-line

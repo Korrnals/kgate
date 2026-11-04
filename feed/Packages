@@ -4,7 +4,7 @@ Architecture: aarch64-3.10
 Maintainer: Korrnals
 Depends: iptables, openssh-server, ca-bundle
 Filename: ./kgate_1.1.1-1_aarch64-3.10.ipk
-SHA256sum: ba07251dd93180371439f2f5faab8b9c39021165ceb5a94c5d2d87b19c9922d6
-Size: 11278494
+SHA256sum: 9c9430f2df737cfd2349655d7aeb5029bc550bfa9a633da59397cfdddd81ec49
+Size: 11278590
 Description: VPN-stack supervisor for Netcraze/Keenetic (sing-box + tolerant socks relay + mTLS API)
 
