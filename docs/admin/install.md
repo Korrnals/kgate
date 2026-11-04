@@ -4,7 +4,7 @@
 > Предусловия: Netcraze/Keenetic (ndm 4.x–5.x), USB с Entware в `/opt`,
 > ssh-доступ по ключу, компонент ndm «Клиент прокси».
 
-## Быстрый путь (полный стек через деплойер)
+## 🚀 Быстрый путь (полный стек через деплойер)
 
 ```bash
 git clone <repo> && cd kgate
@@ -12,9 +12,9 @@ cp examples/kgate.yaml.example kgate.yaml      # поправить host / ssh_k
 
 # реальные материалы стека (шаблоны лежат в examples/etc)
 mkdir -p local/etc/sing-box/rulesets local/etc/ssh
-cp мой-sing-box-config.json local/etc/sing-box/config.json
-cp rule-sets/*.srs                             local/etc/sing-box/rulesets/
-cp мой-ключ.pub                                local/etc/ssh/authorized_keys
+cp <путь>/sing-box-config.json  local/etc/sing-box/config.json
+cp <путь>/rulesets/*.srs        local/etc/sing-box/rulesets/
+cp <путь>/deploy-key.pub        local/etc/ssh/authorized_keys
 
 make build
 ./kgate apply -c kgate.yaml
@@ -31,7 +31,7 @@ make build
 | ndm | Proxy0 (upstream на relay :1090), route-pins, DNS, политики-сценарии |
 | services | `S99kgate start` → верификация через mTLS + локальный socks-тест |
 
-## Альтернатива: .ipk-пакет (только бинарь + init)
+## 📦 Альтернатива: .ipk-пакет (только бинарь + init)
 
 Когда движок (sing-box, конфиги) уже стоит на роутере:
 
@@ -50,7 +50,7 @@ ssh root@192.168.1.1 'opkg install /tmp/kgate_*.ipk'
 > актуальный набор; при отсутствии — добавьте вручную в
 > `/opt/etc/sing-box/rulesets/`.
 
-## После установки
+## ✅ После установки
 
 ```bash
 kgate status          # всё зелёное?
@@ -59,3 +59,9 @@ kgate verify          # движок + правила + выходной IP
 ```
 
 Проверка сегментов ndm — обязательный шаг: [segments-and-policies.md](segments-and-policies.md).
+
+## 👉 См. также
+
+- [releases.md](releases.md) — обновление, откат, верификация подписей
+- [configuration.md](configuration.md) — что проверить в конфигах после установки
+- [glossary.md](../glossary.md) — стадия apply, payload, route-pins

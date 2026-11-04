@@ -1,6 +1,6 @@
 # Архитектура · Компоненты
 
-## Карта компонентов
+## 🗺 Карта компонентов
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ flowchart LR
     DAEMON -- "DNS-DNAT, autoup" --> NDM
 ```
 
-## Демон `kgate serve`
+## ⚙️ Демон `kgate serve`
 
 Внутренние подсистемы и их ответственность:
 
@@ -39,7 +39,7 @@ flowchart LR
 Детерминированное окружение (`daemonEnv`): демон принудительно задаёт `PATH`,
 `HOME`, `TERM` для всех shell-вызовов — бут-минимум rc.unslung не влияет.
 
-## Точки интеграции с ndm
+## 🔌 Точки интеграции с ndm
 
 | Точка | Механика | Зачем |
 |---|---|---|
@@ -48,11 +48,15 @@ flowchart LR
 | tun2socks | ndm-компонент, интерфейс `t2s0` | ndm сам заворачивает помеченный трафик в SOCKS — на наш relay |
 | nat пересборки | `InterfaceFlusher` | любое событие интерфейса сносит пользовательские chains — демон восстанавливает |
 
-## Adapters (задел на универсальность)
+## 🧩 Adapters (задел на универсальность)
 
 Вся работа с платформой изолирована в трёх интерфейсных точках:
 `tunnelToggle(on/off)`, `dnsRules(apply/check)`, `tunnelHealth()`.
 Сегодня реализован ndm-адаптер; порт на OpenWrt = реализация тех же точек
 через uci/nftables — код демона, relay и API не меняются.
 
-См. также: [data-flow.md](data-flow.md) — потоки, [data-model.md](data-model.md) — конфиг и объекты.
+## 👉 См. также
+
+- [data-flow.md](data-flow.md) — потоки трафика и сценарии ON/OFF/RU-exit
+- [data-model.md](data-model.md) — конфиг и объекты API
+- [glossary.md](../glossary.md) — туннель, relay, route-pins и другие термины

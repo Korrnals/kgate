@@ -1,6 +1,6 @@
 # Архитектура · Модель данных
 
-## `kgate.yaml` — единый конфиг
+## 📄 `kgate.yaml` — единый конфиг
 
 Один файл живёт и на ноутбуке, и на роутере. Секции изолированы.
 
@@ -31,7 +31,7 @@ daemon:                  # секция демона (роутер)
 
 Соответствие Go-структуре: `internal/model/config.go` → `model.Config`.
 
-## Payload деплоя
+## 📦 Payload деплоя
 
 Самодостаточный `tar.gz`, собирается Makefile'ом:
 
@@ -46,7 +46,7 @@ daemon:                  # секция демона (роутер)
 Секреты и правила (`.srs`) в репозиторий не попадают: реальные материалы
 живут в `local/` (gitignored), в `examples/` — шаблоны с плейсхолдерами.
 
-## mTLS-набор
+## 🛡 mTLS-набор
 
 | Объект | Где | Кто генерирует |
 |---|---|---|
@@ -54,22 +54,32 @@ daemon:                  # секция демона (роутер)
 | `server.crt` / `server.key` | роутер (`<web_root>/`) | `kgate apply`; SAN: IP роутера + `kgate` |
 | `client.crt` / `client.key` | ноутбук (`~/.kgate/`) | `kgate apply` |
 
-## Объекты API
+## 🔌 Объекты API
 
 `GET /api/v1/status` → `Status` (см. `internal/daemon/daemon.go`):
 
 ```json
 {
-  "relay": "running",
   "singbox": "running",
+  "relay": "running",
   "fd_limit": "16383 16384",
   "proxy0": "state: up",
-  "pins": "2",
-  "dns_rules": "2",
+  "pins": "pins: 2",
+  "dns_rules": "dns rules: 2",
   "mode": "Rule",
-  "uptime": "8628s"
+  "uptime": "8628s",
+  "debug": "raw=\"...\""
 }
 ```
 
 POST-тела: `/toggle` — `{"state":"on"|"off"}`; `/ruexit` — `{"mode":"global"|"rule"}`.
-Полное описание — [API → эндпоинты](../api/endpoints.md).
+Полное описание и готовые примеры — [API · Эндпоинты](../api/endpoints.md):
+карточки [status/verify](../api/endpoints-status-verify.md),
+[toggle](../api/endpoints-toggle.md), [ruexit](../api/endpoints-ruexit.md),
+[logs/reboot](../api/endpoints-logs-reboot.md).
+
+## 👉 См. также
+
+- [api/authentication.md](../api/authentication.md) — mTLS-набор в действии
+- [admin/configuration.md](../admin/configuration.md) — критичные поля конфига sing-box
+- [glossary.md](../glossary.md)

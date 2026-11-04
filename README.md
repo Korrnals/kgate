@@ -72,9 +72,15 @@ docs/
 │   ├── ru-exit.md                   — 🕶 RU-анонимизация
 │   └── faq.md                       — частые вопросы
 │
-└── 🔌 api/                          — интеграция
-    ├── authentication.md            — mTLS, сертификаты, конвенции
-    └── endpoints.md                 — все эндпоинты (цветовая индикация, примеры)
+├── 🔌 api/                          — интеграция
+│   ├── authentication.md            — mTLS, сертификаты, конвенции
+│   ├── endpoints.md                 — карта эндпоинтов, легенда методов
+│   ├── endpoints-status-verify.md   — 🟢 status · verify
+│   ├── endpoints-toggle.md          — 🔵 toggle (тумблер VPN)
+│   ├── endpoints-ruexit.md          — 🔵 ruexit (RU-exit)
+│   └── endpoints-logs-reboot.md     — 🟢 logs · 🔴 reboot
+│
+└── 📖 glossary.md                   — глоссарий терминов
 ```
 
 | Хочу… | Открой |
@@ -84,7 +90,8 @@ docs/
 | настроить конфиги | [admin/configuration](docs/admin/configuration.md) |
 | разобраться, «почему трафик прямой» | [admin/segments-and-policies](docs/admin/segments-and-policies.md) |
 | включить RU-анонимизацию | [user/ru-exit](docs/user/ru-exit.md) |
-| интегрироваться по API | [api/authentication](docs/api/authentication.md) → [api/endpoints](docs/api/endpoints.md) |
+| интегрироваться по API | [api/authentication](docs/api/authentication.md) → [карта эндпоинтов](docs/api/endpoints.md) |
+| свериться с терминами | [glossary](docs/glossary.md) |
 | удалить всё | [admin/uninstall](docs/admin/uninstall.md) |
 
 ---

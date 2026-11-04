@@ -1,6 +1,6 @@
 # Администрирование · Конфигурация
 
-## `kgate.yaml` — единый файл
+## 📄 `kgate.yaml` — единый файл
 
 Одинаковый на ноутбуке и роутере; секции изолированы. Полная модель —
 [architecture/data-model.md](../architecture/data-model.md).
@@ -15,7 +15,7 @@
 > Секретов в `kgate.yaml` нет. Секреты hy2 живут в `sing-box` конфиге
 > (`local/etc/sing-box/config.json` → payload → `/opt/etc/sing-box/config.json`).
 
-## Конфиг sing-box — критичные для kgate поля
+## ⚙️ Конфиг sing-box — критичные для kgate поля
 
 | Поле | Зачем | Слом при ошибке |
 |---|---|---|
@@ -26,20 +26,20 @@
 
 Проверка конфига перед рестартом: `sing-box check -c /opt/etc/sing-box/config.json`.
 
-## Rulesets
+## 🗂 Rulesets
 
 Локальные rule-sets (`.srs`) кладутся в `/opt/etc/sing-box/rulesets/`.
 При сборке payload Makefile копирует их из `local/etc/sing-box/rulesets/`
 (или скачивает при сборке .ipk — если источник доступен).
 
-## mTLS-сертификаты
+## 🛡 mTLS-сертификаты
 
 - генерируются автоматически при `kgate apply` (ECDSA P-256, 10 лет);
 - перегенерация вручную: удалить `~/.kgate/*` и `web_root` на роутере → повторный `apply`
   (перевыдача разорвёт доверие старых клиентов — обновите их наборы);
 - серверный ключ: `0600`, живёт только на роутере (`<web_root>/server.key`).
 
-## Логи
+## 📜 Логи
 
 | Лог | Что содержит |
 |---|---|
@@ -47,3 +47,9 @@
 | `/opt/var/log/kgate.log` | записи relay/супервизора |
 | `/opt/var/log/singbox.log` | stderr sing-box |
 | `kgate logs` | агрегированный хвост через mTLS |
+
+## 👉 См. также
+
+- [operations.md](operations.md) — диагностика и типовые неисправности
+- [architecture/data-model.md](../architecture/data-model.md) — полная модель конфига и payload
+- [api/authentication.md](../api/authentication.md) — сертификаты в действии

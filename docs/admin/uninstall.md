@@ -3,7 +3,7 @@
 > 🔴 Все операции необратимы без бэкапа. Снимите копию `/opt/etc/`
 > перед началом: `ssh router 'tar -czf /tmp/opt-etc.tgz /opt/etc' && scp ...`
 
-## Сценарий А — убрать только VPN-стек kgate
+## 🟠 Сценарий А — убрать только VPN-стек kgate
 
 ```bash
 ssh router '
@@ -18,7 +18,7 @@ rm -rf /opt/var/log/kgate*.log
 Останется: sing-box бинарь/конфиги, sshd, Entware — движок без супервизора
 и без правил DNS (трафик пойдёт напрямую).
 
-## Сценарий Б — полное очищение стека (kgate + sing-box + правила)
+## 🔴 Сценарий Б — полное очищение стека (kgate + sing-box + правила)
 
 ```bash
 ssh router '
@@ -43,15 +43,21 @@ ndmc -c "no ip route <DNS_IP> ISP"
 > Сегментные политики и Proxy0-подключение удаляются в веб-интерфейсе
 > (Другие подключения / Приоритеты подключений).
 
-## Восстановление заводского поведения DNS
+## 🕳 Восстановление заводского поведения DNS
 
 ```bash
-ndmc -c "no ip name-server 77.88.8.8"   # если был настроен статический DNS
+ndmc -c "no ip name-server <DNS_IP>"   # если был настроен статический DNS
 ```
 
-## Проверка после очищения
+## ✅ Проверка после очищения
 
 ```bash
 pidof sing-box kgate || echo "процессов нет"
 ssh router 'grep -c SBREDIRECT <(/opt/sbin/iptables -t nat -L -n)'   # 0 = правил нет
 ```
+
+## 👉 См. также
+
+- [install.md](install.md) — установить заново с нуля
+- [releases.md](releases.md) — откат версии вместо удаления
+- [glossary.md](../glossary.md) — route-pins, Proxy0, SBREDIRECT

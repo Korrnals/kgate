@@ -1,6 +1,6 @@
 # Архитектура · Потоки данных
 
-## Поток при тумблере ON (штатный режим)
+## 🟢 Поток при тумблере ON (штатный режим)
 
 ```mermaid
 flowchart TD
@@ -20,7 +20,7 @@ flowchart TD
 - DNS устройств всегда уходит на защищённый резолвер мимо ndm-фильтров и
   DNS-подавления провайдера — независимо от положения тумблера.
 
-## Поток при тумблере OFF
+## 🔴 Поток при тумблере OFF
 
 ```mermaid
 flowchart TD
@@ -32,7 +32,7 @@ flowchart TD
 - ndm сам переводит политику на backup-подключение: туннель и relay не участвуют.
 - RU-ресурсы работают; зарубежные — в соответствии с ограничениями провайдера.
 
-## Поток тумблер-команды (`kgate toggle`)
+## 🎛 Поток тумблер-команды (`kgate toggle`)
 
 ```mermaid
 sequenceDiagram
@@ -48,7 +48,7 @@ sequenceDiagram
     C->>U: статус + верификация
 ```
 
-## Поток деплоя (`kgate apply`)
+## 🚀 Поток деплоя (`kgate apply`)
 
 ```mermaid
 sequenceDiagram
@@ -69,10 +69,16 @@ Payload — самодостаточный tar: `kgate-arm64`, `sing-box` (pinne
 `S99kgate`, `ndm-commands.sh`, `root/opt/etc/...` (конфиги из `local/etc` или
 шаблоны `examples/etc`).
 
-## Инварианты
+## 🛡 Инварианты
 
 - DNS устройств ходит через защищённый резолвер при любом состоянии тумблера.
 - Выходной туннель (hy2) и DNS sing-box никогда не попадают в туннельную
   политику — за это отвечают route-pins (`/32 → ISP`).
 - `direct`-outbound sing-box привязан к физическому WAN (`bind_interface`),
   иначе RU-трафик ловится политикой и зацикливается в tun2socks.
+
+## 👉 См. также
+
+- [components.md](components.md) — кто исполняет каждый шаг потока
+- [user/ru-exit.md](../user/ru-exit.md) — режим Global глазами пользователя
+- [glossary.md](../glossary.md)
