@@ -1,0 +1,10 @@
+Package: kgate
+Version: 1.1.1-1
+Architecture: aarch64-3.10
+Maintainer: Korrnals
+Depends: iptables, openssh-server, ca-bundle
+Filename: ./kgate_1.1.1-1_aarch64-3.10.ipk
+SHA256sum: ba07251dd93180371439f2f5faab8b9c39021165ceb5a94c5d2d87b19c9922d6
+Size: 11278494
+Description: VPN-stack supervisor for Netcraze/Keenetic (sing-box + tolerant socks relay + mTLS API)
+
