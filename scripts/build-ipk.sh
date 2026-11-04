@@ -52,7 +52,8 @@ test -f examples/S99kgate || { echo "FATAL: examples/S99kgate missing" >&2; exit
 cp examples/S99kgate "$T/data/opt/etc/init.d/S99kgate" && chmod 0755 "$T/data/opt/etc/init.d/S99kgate"
 if [ -f local/etc/sing-box/config.json ]; then cp local/etc/sing-box/config.json "$T/data/opt/etc/sing-box/config.json"; fi
 if [ -f examples/etc/sing-box/config.json ] && [ ! -f "$T/data/opt/etc/sing-box/config.json" ]; then cp examples/etc/sing-box/config.json "$T/data/opt/etc/sing-box/config.json"; fi
-if [ -d local/etc/sing-box/rulesets ]; then cp local/etc/sing-box/rulesets/*.srs "$T/data/opt/etc/sing-box/rulesets/" 2>/dev/null || true; fi
+if [ -d local/etc/sing-box/rulesets ]; then cp local/etc/sing-box/rulesets/*.srs "$T/data/opt/etc/sing-box/rulesets/" 2>/dev/null || true
+elif [ -n "$RULESETS_DIR" ] && [ -d "$RULESETS_DIR" ]; then cp "$RULESETS_DIR"/*.srs "$T/data/opt/etc/sing-box/rulesets/" 2>/dev/null || true; fi
 if [ -f local/etc/kgate/kgate.yaml ]; then cp local/etc/kgate/kgate.yaml "$T/data/opt/etc/kgate/kgate.yaml";
 elif [ -f examples/kgate.yaml.example ]; then cp examples/kgate.yaml.example "$T/data/opt/etc/kgate/kgate.yaml"; fi
 chmod 0755 "$T/data/opt/sbin/kgate"
