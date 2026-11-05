@@ -36,8 +36,7 @@ configs.
 - ipk is self-sufficient: ships the pinned sing-box engine, the ndm
   config script and the RU-split rulesets (previous feed artifact
   carried the kgate binary only).
-- The opkg feed moved into this repository (gh-pages branch); the
-  separate `kgate-feed` repository is retired.
+- The opkg feed is served from this repository's gh-pages branch.
 - Vendored rulesets under `examples/etc/sing-box/rulesets/` so clean
   checkouts (release pipeline) build complete packages.
 
