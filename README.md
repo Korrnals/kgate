@@ -17,6 +17,23 @@
 
 ---
 
+## 📋 Требования и совместимость — подходит ли мне?
+
+| Что | Требование |
+|---|---|
+| Роутер | **Netcraze / Keenetic**, архитектура **aarch64** (MIPS/legacy KN — нет) |
+| ОС | KeeneticOS / NetcrazeOS **4.x–5.x** + Entware в `/opt` (проверено: 5.01.C.7.0-4, Netcraze Ultra) |
+| Место | **≥ 120 МБ** свободного под стек (рекомендуется USB; встроенная память Ultra — впритык) |
+| Ноутбук | Linux amd64/arm64 + ssh-ключ до роутера (ssh-бинарник **не нужен** — транспорт на Go) |
+| Туннель | **hysteria2** (± obfs salamander) до **своего/предоставленного** сервера (sing-box/hysteria2, TLS на домен); пароль, не подписки |
+| Локально | SOCKS5 `:1080`/`1090`, redirect `:1081`; RU-сплит (geosite/geoip в комплекте); тумблер Proxy0 + per-device политики |
+
+**Нет из коробки:** подписки (subscription-URL), другие протоколы (vless/trojan/ss/wg — движок умеет, kgate не конфигурирует), режим сервера, нативная карточка в веб-UI.
+
+Полная матрица и self-check — [docs/admin/requirements.md](docs/admin/requirements.md).
+
+---
+
 ## ⚡ Быстрый старт
 
 Ноутбук оператора — три команды и один редактор:
@@ -79,6 +96,7 @@ docs/
 |---|---|
 | понять, как устроено | [architecture/overview](docs/architecture/overview.md) → [components](docs/architecture/components.md) |
 | подготовить роутер к установке | [admin/preparation](docs/admin/preparation.md) |
+| проверить, подходит ли моё железо/сервер | [admin/requirements](docs/admin/requirements.md) |
 | установить/обновить | [admin/install](docs/admin/install.md) → [admin/releases](docs/admin/releases.md) |
 | настроить конфиги | [admin/configuration](docs/admin/configuration.md) |
 | разобраться, «почему трафик прямой» | [admin/segments-and-policies](docs/admin/segments-and-policies.md) |

@@ -78,6 +78,12 @@ RU\-анонимизация: on = global, off = rule (нужен серверн
 .BR \-c ", " \-\-config " " \fIpath\fR
 путь к yaml\-конфигу. Дефолт: \fB$KGATE_CONFIG\fR, иначе
 \fI~/.kgate/kgate.yaml\fR; если его нет, но есть \fI./kgate.yaml\fR — берётся он.
+.SH ТРЕБОВАНИЯ
+Роутер: Netcraze/Keenetic aarch64, KeeneticOS/NetcrazeOS 4.x–5.x, Entware
+в /opt, ≥120 МБ места. Туннель: hysteria2 (± obfs salamander) до
+своего/предоставленного сервера (TLS на домен). Подписки и другие
+протоколы не поддерживаются. Полная матрица:
+docs/admin/requirements.md.
 .SH CONFIGURATION
 Конфиг единый для ноутбука и роутера: клиент/деплойер читают
 \fBhost\fR, \fBserver_ip\fR, \fBssh_*\fR, \fBapi\fR; демон на роутере —
