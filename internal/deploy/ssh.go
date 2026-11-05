@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/term"
 
 	"kgate/internal/model"
 )
@@ -96,11 +97,9 @@ func fingerprint(key ssh.PublicKey) string {
 
 func (s *sshRunner) connect() error {
 	keyPath := expandTilde(s.cfg.SSHKey)
-	key, err := os.ReadFile(keyPath)
-	if err != nil {
-		return fmt.Errorf("ssh key %s: %w", keyPath, err)
-	}
-	signer, err := ssh.ParsePrivateKey(key)
+	// self-managed keys: the pair is generated on demand (the public half is
+	// then installed on the router via the one-time password bootstrap below)
+	signer, err := ensureKeyPair(keyPath)
 	if err != nil {
 		return fmt.Errorf("ssh key %s: %w", keyPath, err)
 	}
@@ -110,17 +109,53 @@ func (s *sshRunner) connect() error {
 		return err
 	}
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.SSHPort)
-	client, err := ssh.Dial("tcp", addr, &ssh.ClientConfig{
-		User:            s.cfg.SSHUser,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: hk,
-		Timeout:         10 * time.Second,
-	})
+	dial := func() (*ssh.Client, error) {
+		return ssh.Dial("tcp", addr, &ssh.ClientConfig{
+			User:            s.cfg.SSHUser,
+			Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+			HostKeyCallback: hk,
+			Timeout:         10 * time.Second,
+		})
+	}
+	client, err := dial()
+	if err != nil && strings.Contains(err.Error(), "unable to authenticate") {
+		// key not installed on the router yet (fresh setup / keys clobbered):
+		// one-time password bootstrap installs the public key, append-only
+		pw, perr := promptPassword(s.cfg.SSHUser, s.cfg.Host)
+		if perr != nil {
+			return fmt.Errorf("ssh %s@%s: %w; bootstrap недоступен: %v", s.cfg.SSHUser, addr, err, perr)
+		}
+		if ierr := installPubKey(s.cfg, signer, pw); ierr != nil {
+			return fmt.Errorf("ssh bootstrap (установка ключа): %w", ierr)
+		}
+		fmt.Println("  [OK] ssh-ключ установлен на роутер (bootstrap по одноразовому паролю)")
+		client, err = dial()
+	}
 	if err != nil {
 		return fmt.Errorf("ssh %s@%s: %w (Entware поднялся? порт верный?)", s.cfg.SSHUser, addr, err)
 	}
 	s.client = client
 	return nil
+}
+
+// promptPassword reads a one-time password: KGATE_SSH_PASSWORD env first
+// (scripts), then the controlling terminal with echo disabled.
+func promptPassword(user, host string) (string, error) {
+	if pw := os.Getenv("KGATE_SSH_PASSWORD"); pw != "" {
+		return pw, nil
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return "", errors.New("stdin не терминал — задай KGATE_SSH_PASSWORD или установи ключ вручную")
+	}
+	defer tty.Close()
+	fmt.Fprintf(tty, "пароль %s@%s (один раз, для установки ssh-ключа): ", user, host)
+	b, err := term.ReadPassword(int(tty.Fd()))
+	fmt.Fprintln(tty)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // run executes a shell script and returns combined output; a dropped

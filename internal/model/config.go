@@ -56,7 +56,8 @@ func (c *Config) fillDefaults() {
 		c.SSHUser = "root"
 	}
 	if c.SSHKey == "" {
-		c.SSHKey = os.Getenv("HOME") + "/.ssh/kgate-ed25519"
+		// self-managed key: generated on demand and bootstrapped onto the router
+		c.SSHKey = os.Getenv("HOME") + "/.kgate/id_ed25519"
 	}
 	if c.API.Port == 0 {
 		c.API.Port = 9443
