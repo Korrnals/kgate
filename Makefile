@@ -78,8 +78,9 @@ lint: ## gofmt + go vet
 	go vet ./...
 test: ## go test ./... (no test files yet — prints 'no test files', exits 0)
 	go test ./...
-security: ## govulncheck (fails loudly if the tool is missing)
-	@command -v govulncheck >/dev/null 2>&1 && govulncheck ./... || { echo "install govulncheck: go install golang.org/x/vuln/cmd/govulncheck@latest"; exit 1; }
+security: ## govulncheck на запиненном тулчейне: go run собирает analyzer тем же GOTOOLCHAIN —
+## преbuilt-бинарь другой эпохи (напр. go1.25 на runner'е) не читает stdlib 1.26+
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 clean:
 	rm -rf build dist internal/deploy/payload.tgz kgate
