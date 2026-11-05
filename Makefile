@@ -35,14 +35,23 @@ build/sing-box:
 	@rm -f build/sb.tgz
 
 payload: build/kgate-arm64 build/sing-box
-	@mkdir -p build/root/opt/etc/sing-box/rulesets build/root/opt/etc/ssh
+	@$(MAKE) --no-print-directory payload-common ETC_DIR=$(ETC_DIR)
+
+# санитизированный payload для релизных бинарей: ТОЛЬКО examples/etc —
+# деплой из релиза ставит стек с шаблонным конфигом (плейсхолдеры), реальные
+# креды в релизы не попадают by construction (урок инцидента v1.3.1)
+payload-release: build/kgate-arm64 build/sing-box
+	@$(MAKE) --no-print-directory payload-common ETC_DIR=examples/etc
+
+payload-common:
 	@cp -f examples/S99kgate examples/ndm-commands.sh build/
+	@mkdir -p build/root/opt/etc/sing-box/rulesets build/root/opt/etc/ssh
 	@cp -f $(ETC_DIR)/sing-box/config.json build/root/opt/etc/sing-box/config.json
 	@cp -f $(ETC_DIR)/sing-box/rulesets/*.srs build/root/opt/etc/sing-box/rulesets/ 2>/dev/null || true
 	@cp -f $(ETC_DIR)/ssh/authorized_keys build/root/opt/etc/ssh/authorized_keys
 	@cp -f $(ETC_DIR)/passwd build/root/opt/etc/passwd
 	@tar -czf internal/deploy/payload.tgz -C build kgate-arm64 sing-box S99kgate ndm-commands.sh root
-	@ls -la internal/deploy/payload.tgz | awk '{print "payload: " $$5 " bytes"}'
+	@ls -la internal/deploy/payload.tgz | awk '{print "payload: " $$5 " bytes (ETC_DIR=$(ETC_DIR))"}'
 
 build: payload
 	go build -tags kgate_real_payload -ldflags "$(LDFLAGS)" -o kgate .
@@ -84,4 +93,4 @@ security: ## govulncheck на запиненном тулчейне: go run со
 clean:
 	rm -rf build dist internal/deploy/payload.tgz kgate
 
-.PHONY: ensure-empty build/sing-box payload build release-binaries ipk install-cli update-ca-bundle verify lint test security clean
+.PHONY: ensure-empty build/sing-box payload payload-release payload-common build release-binaries ipk install-cli update-ca-bundle verify lint test security clean

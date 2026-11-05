@@ -11,6 +11,11 @@ before:
   hooks:
     # pipeline-owned verify gates also run; keep the goreleaser-owned build gate
     - make verify
+    # sanitized payload (examples/etc only) so release binaries CAN run
+    # `kgate deploy`: they install the stack with placeholder configs — the
+    # user then fills server/password on the router (first-run flow). Real
+    # credentials never enter release builds (the v1.3.1 lesson).
+    - make -s payload-release
     # builds the ipk into .goreleaser-ipk/ (NOT dist/ — goreleaser owns dist
     # and requires it empty before its own builds; the ipk is attached via
     # release.extra_files)
@@ -24,6 +29,9 @@ builds:
       - CGO_ENABLED=0
       # см. Makefile: единый тулчейн с чистым stdlib (runner держит 1.25.12)
       - GOTOOLCHAIN=go1.27.3
+    # встраиваем санитизированный payload: релизный бинарь умеет деплоить стек
+    tags:
+      - kgate_real_payload
     goos:
       - linux
     goarch:
