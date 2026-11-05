@@ -126,22 +126,27 @@ func (s *sshRunner) connect() error {
 // run executes a shell script and returns combined output; a dropped
 // connection is re-established once before giving up.
 func (s *sshRunner) run(script string) (string, error) {
+	var sess *ssh.Session
+	var runErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		if s.client == nil {
 			if err := s.connect(); err != nil {
 				return "", err
 			}
 		}
-		sess, err := s.client.NewSession()
-		if err != nil {
+		sess, runErr = s.client.NewSession()
+		if runErr != nil {
 			s.client = nil // stale connection — reconnect and retry once
 			continue
 		}
 		defer sess.Close()
 		var buf bytes.Buffer
 		sess.Stdout, sess.Stderr = &buf, &buf
-		err = sess.Run(script)
-		return buf.String(), err
+		runErr = sess.Run(script)
+		return buf.String(), runErr
+	}
+	if runErr != nil {
+		return "", fmt.Errorf("ssh session failed twice: %w", runErr)
 	}
 	return "", errors.New("ssh session failed twice")
 }

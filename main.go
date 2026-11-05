@@ -278,22 +278,22 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := load()
 			r := deploy.New(c, dryRun)
-			r.Preflight()
+			fmt.Println(deploy.DestroyPlan(c)) // план всегда первым — и в dry-run, и перед подтверждением
 			if dryRun {
 				fmt.Println("DRY-RUN — план destroy (изменений не будет):")
-			} else {
-				fmt.Println(deploy.DestroyPlan(c))
-				if !assumeYes {
-					if !stdinIsTTY() {
-						return fmt.Errorf("stdin — не терминал: подтверждение невозможно; для скриптов добавь --yes")
-					}
-					fmt.Print("\nСнять стек kgate с роутера? Введи y для продолжения: ")
-					answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-					answer = strings.ToLower(strings.TrimSpace(answer))
-					if answer != "y" && answer != "yes" && answer != "д" && answer != "да" {
-						fmt.Println("отменено — ничего не изменено")
-						return nil
-					}
+				return nil
+			}
+			r.Preflight()
+			if !assumeYes {
+				if !stdinIsTTY() {
+					return fmt.Errorf("stdin — не терминал: подтверждение невозможно; для скриптов добавь --yes")
+				}
+				fmt.Print("\nСнять стек kgate с роутера? Введи y для продолжения: ")
+				answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+				answer = strings.ToLower(strings.TrimSpace(answer))
+				if answer != "y" && answer != "yes" && answer != "д" && answer != "да" {
+					fmt.Println("отменено — ничего не изменено")
+					return nil
 				}
 			}
 			r.Destroy()

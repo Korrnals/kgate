@@ -35,7 +35,6 @@ build/sing-box:
 	@rm -f build/sb.tgz
 
 payload: build/kgate-arm64 build/sing-box
-	@cp -f examples/S99kgate examples/ndm-commands.sh build/
 	@mkdir -p build/root/opt/etc/sing-box/rulesets build/root/opt/etc/ssh
 	@cp -f examples/S99kgate examples/ndm-commands.sh build/
 	@cp -f $(ETC_DIR)/sing-box/config.json build/root/opt/etc/sing-box/config.json
@@ -85,4 +84,4 @@ security: ## govulncheck на запиненном тулчейне: go run со
 clean:
 	rm -rf build dist internal/deploy/payload.tgz kgate
 
-.PHONY: ensure-empty build-arm64 build/sing-box payload build release-binaries ipk install-cli update-ca-bundle verify lint test security clean
+.PHONY: ensure-empty build/sing-box payload build release-binaries ipk install-cli update-ca-bundle verify lint test security clean

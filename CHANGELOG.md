@@ -28,9 +28,9 @@ and the requirements/compatibility story is documented.
   mandatory fit-check block in the README.
 
 ### Changed
-- examples/S99kgate gains a restart case (used by deploy's services
-  stage); the self-update verb keeps stop+start on purpose — old
-  deployed S99 scripts have no restart case.
+- examples/S99kgate gains a restart case (for manual restarts; deploy
+  and self-update deliberately keep stop+start so they work with any
+  deployed S99 generation).
 - deploy's ndm stage no longer masks script failures with a fallback
   echo; failed steps reach the failure counter and the exit code.
 - ssh upload recovers from a stale connection once (before the first

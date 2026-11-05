@@ -74,19 +74,14 @@ func (r *Runner) step(name, script string) string {
 	if err != nil {
 		r.failures++
 		fmt.Printf("  %s %s (%v)\n", r.mark(false), name, d)
-		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-			if line != "" {
-				fmt.Println("      " + line)
-			}
-		}
 	} else {
 		fmt.Printf("  %s %s (%v)\n", r.mark(true), name, d)
-		// success output is visible too (indented): version evidence, S99 status,
-		// checksum lines — a green mark must be explainable from the console
-		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-			if line != "" {
-				fmt.Println("      " + line)
-			}
+	}
+	// вывод скрипта виден и на успехе (с отступом): version-evidence,
+	// S99 status — зелёная галочка должна быть объяснима из консоли
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if line != "" {
+			fmt.Println("      " + line)
 		}
 	}
 	return out
@@ -183,6 +178,10 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 	fmt.Println("→ deploy: config + mTLS certs")
 	yml, _ := yamlMarshal(cfg)
 	r.upload(yml, `mkdir -p /opt/etc/kgate && cat > /opt/etc/kgate/kgate.yaml`, "рендер kgate.yaml на роутер")
+	if r.dry {
+		fmt.Printf("  %s mTLS-сертификаты (dry-run: генерация и чтение пропущены)\n", r.mark(true))
+		return
+	}
 	created, err := certs.Ensure(homeDir()+"/.kgate", cfg.Host)
 	if err != nil {
 		r.fatal("генерация mTLS-сертификатов: " + err.Error())
