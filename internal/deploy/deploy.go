@@ -154,8 +154,13 @@ mv -f S99kgate /opt/etc/init.d/S99kgate
 mkdir -p /opt/etc/sing-box/rulesets
 cp -f root/opt/etc/sing-box/config.json /opt/etc/sing-box/config.json
 cp -f root/opt/etc/sing-box/rulesets/*.srs /opt/etc/sing-box/rulesets/ 2>/dev/null
-cp -f root/opt/etc/ssh/authorized_keys /opt/etc/ssh/authorized_keys
+cp -f root/opt/etc/ssh/authorized_keys /opt/etc/ssh/authorized_keys.new
 grep -q "^sshd:" /opt/etc/passwd || cat root/opt/etc/passwd >> /opt/etc/passwd
+# ssh-ключи: НИКОГДА не затирать существующие — релизный payload несёт
+# санитизированную заглушку, и безусловный cp запер бы оператора снаружи
+# (v1.4.1 E2E: поймано живьём); заглушка кладётся только на чистый роутер
+[ -s /opt/etc/ssh/authorized_keys ] || mv -f /opt/etc/ssh/authorized_keys.new /opt/etc/ssh/authorized_keys
+rm -f /opt/etc/ssh/authorized_keys.new
 chmod +x /opt/sbin/kgate /opt/sbin/sing-box /opt/etc/init.d/S99kgate
 rm -rf /tmp/px /tmp/payload.tgz
 mkdir -p /opt/etc/kgate /opt/etc/ssh /opt/var/log /opt/var/run
