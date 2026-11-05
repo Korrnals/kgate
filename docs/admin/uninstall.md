@@ -3,28 +3,31 @@
 > 🔴 Все операции необратимы без бэкапа. Снимите копию `/opt/etc/`
 > перед началом: `ssh router 'tar -czf /tmp/opt-etc.tgz /opt/etc' && scp ...`
 
-## Основной путь · снять стек, поставленный `kgate deploy`
+## Основной путь · `kgate destroy`
 
-Зеркало основного пути установки — на ноутбуке, одна ssh-сессия:
-
-```bash
-kgate toggle off          # опустить туннель (трафик дома пойдёт напрямую)
-ssh router '
-/opt/etc/init.d/S99kgate stop
-rm -f  /opt/etc/init.d/S99kgate /opt/etc/ndm-commands.sh
-rm -rf /opt/etc/kgate /opt/etc/sing-box
-rm -f  /opt/sbin/kgate /opt/sbin/sing-box
-rm -f  /opt/var/log/kgate*.log /opt/var/log/singbox.log
-killall sing-box 2>/dev/null
-true'
-```
-
-На роутере останутся: sshd, Entware и ndm-объекты (Proxy0, route-pin на
-`server_ip`). Пин снимается одной командой (значение — ваш exit-IP):
+Одна команда на ноутбуке — зеркало `kgate deploy`:
 
 ```bash
-ssh router 'ndmc -c "no ip route 203.0.113.10 ISP"'
+kgate destroy
 ```
+
+Утилита покажет план (что будет остановлено и удалено) и потребует
+подтверждения — введите `y`. Для скриптов: `kgate destroy --yes`; план без
+изменений: `kgate destroy --dry-run`.
+
+Что делает:
+
+- останавливает `S99kgate` (Proxy0 опустится — дом пойдёт напрямую);
+- снимает пакет `opkg remove kgate`, если стек ставился пакетом
+  (снимет и sing-box);
+- удаляет файлы стека: `/opt/sbin/{kgate,sing-box}`, `/opt/etc/{kgate,sing-box}`,
+  init-скрипт, `ndm-commands.sh`, логи;
+- чистит ndm: Proxy0 down, route-pin'ы (`server_ip`, `77.88.8.8`),
+  name-server `77.88.8.8`.
+
+На роутере останутся sshd и Entware; политики-сценарии (VPN-TV и др.) и
+подключение Proxy0 удаляются в веб-интерфейсе (Другие подключения /
+Приоритеты подключений), если нужны.
 
 Клиентская часть на ноутбуке:
 
@@ -39,13 +42,10 @@ rm -rf ~/.kgate           # конфиг + mTLS-сертификаты
 ssh router 'pidof sing-box kgate || echo "процессов нет"'
 ```
 
-Сегментные политики и Proxy0 удаляются в веб-интерфейсе (Другие подключения /
-Приоритеты подключений).
-
 ## 👉 См. также
 
-- [alternatives-uninstall.md](alternatives-uninstall.md) — пакетное удаление
-  (opkg), полное очищение с legacy, восстановление заводского DNS
+- [alternatives-uninstall.md](alternatives-uninstall.md) — удаление без CLI
+  (голый ssh), полное очищение с legacy, восстановление заводского DNS
 - [install.md](install.md) — установить заново с нуля
 - [releases.md](releases.md) — откат версии вместо удаления
 - [glossary.md](../glossary.md) — route-pins, Proxy0, SBREDIRECT

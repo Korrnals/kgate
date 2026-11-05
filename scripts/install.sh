@@ -32,6 +32,13 @@ tar -xzf "$TMP/kgate.tar.gz" -C "$TMP"
 mv -f "$TMP/kgate" "${DEST}/kgate"
 chmod 0755 "${DEST}/kgate"
 
+# man page: kgate.1 travels inside the release archive
+if [ -f "$TMP/kgate.1" ]; then
+  MANDIR="${KGATE_MANDIR:-$HOME/.local/share/man/man1}"
+  mkdir -p "$MANDIR" && gzip -c "$TMP/kgate.1" > "$MANDIR/kgate.1.gz" 2>/dev/null \
+    && echo "kgate-install: man page -> $MANDIR/kgate.1.gz (проверь MANPATH, если man не находит)"
+fi
+
 echo "kgate-install: installed to ${DEST}/kgate"
 echo
 echo "далее (primary path):"

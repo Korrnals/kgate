@@ -1,0 +1,118 @@
+.\" kgate(1) man page — rendered by `kgate man` or `man ./kgate.1`
+.TH KGATE 1 "November 2026" "kgate 1.3.0" "User Commands"
+.SH NAME
+kgate \- единая утилита управления VPN\-стеком на роутерах Netcraze/Keenetic:
+демон\-супервизор на роутере + mTLS\-клиент + деплойер
+.SH SYNOPSIS
+.B kgate
+[\fB\-c\fR \fIpath\fR]
+\fICOMMAND\fR
+[\fIargs\fR]
+.SH DESCRIPTION
+.B kgate
+ставит и обслуживает VPN\-стек на домашнем роутере: супервизор sing\-box,
+DNS\-перехват (iptables SBREDIRECT), авто\-подъём туннеля и mTLS API.
+Управление — с ноутбука тем же бинарником: деплой по ssh (чистый Go\-транспорт
+x/crypto/ssh, host\-ключи TOFU), mTLS\-клиент, самобновление.
+.SH COMMANDS
+.TP
+.B serve
+демон на роутере: супервизор sing\-box, восстановление dns\-правил,
+auto\-подъём туннеля (boot_autoup), mTLS API на \fB:9443\fR.
+.TP
+.B config create
+создать конфиг из встроенного шаблона по дефолтному пути
+(\fI~/.kgate/kgate.yaml\fR), открыть редактор \fB$VISUAL\fR/\fB$EDITOR\fR,
+напечатать путь. Оставшиеся шаблонные значения помечаются предупреждением.
+.TP
+.B config view | path | edit
+показать конфиг / напечатать путь / открыть в редакторе.
+.TP
+.B deploy
+деплой стека на роутер по ssh (идемпотентные стадии:
+preflight, files, migrate, config, ndm, services).
+Алиас: \fBapply\fR.
+Опции: \fB\-\-only\fR \fIall|files|config|ndm|services\fR,
+\fB\-\-dry\-run\fR (план без изменений).
+Обратная операция — \fBdestroy\fR.
+.TP
+.B destroy
+снять стек с роутера: остановить сервис, удалить файлы стека
+(opkg remove, если ставился пакетом), снять ndm\-пины.
+Требует подтверждения в терминале; \fB\-\-yes\fR — без вопросов
+(для скриптов), \fB\-\-dry\-run\fR — показать план. Алиас: \fBundeploy\fR.
+.TP
+.B update
+самобновление бинарника из GitHub Releases: сравнение версий, скачивание
+архива платформы, проверка sha256 по \fIchecksums\-sha256.txt\fR, атомарная
+замена (tmp+rename); на роутере ещё и рестарт S99kgate
+(туннель вернётся за ~30\-60с).
+.TP
+.B certs
+генерация mTLS\-сертификатов локально (ECDSA P\-256, чистый crypto/x509,
+без openssl). Обычно не нужна — \fBdeploy\fR делает сам.
+.TP
+.B status | verify
+статус стека через mTLS API / батарея проверок (демон + socks\-тест
+выходного IP через туннель).
+.TP
+.B toggle <on|off>
+тумблер HYST VPN (Proxy0 up/down).
+.TP
+.B ruexit <on|off>
+RU\-анонимизация: on = global, off = rule (нужен серверный RU\-rule).
+.TP
+.B logs
+последние логи демона (kgate.log + boot\-лог).
+.TP
+.B reboot
+ребут роутера.
+.TP
+.B man
+показать эту man\-страницу (roff; в терминале рендерится через man).
+.TP
+.B version
+версия бинарника.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fIpath\fR
+путь к yaml\-конфигу. Дефолт: \fB$KGATE_CONFIG\fR, иначе
+\fI~/.kgate/kgate.yaml\fR; если его нет, но есть \fI./kgate.yaml\fR — берётся он.
+.SH CONFIGURATION
+Конфиг единый для ноутбука и роутера: клиент/деплойер читают
+\fBhost\fR, \fBserver_ip\fR, \fBssh_*\fR, \fBapi\fR; демон на роутере —
+\fBdaemon\fR. Любое поле переопределяется переменными
+\fBKGATE_*\fR (env сильнее yaml): KGATE_HOST, KGATE_SERVER_IP,
+KGATE_SSH_PORT, KGATE_SSH_USER, KGATE_SSH_KEY, KGATE_API_PORT,
+KGATE_API_CA, KGATE_API_CERT, KGATE_API_KEY, KGATE_CONFIG,
+KGATE_DAEMON_* и т.д. Полный список — docs/admin/configuration.md.
+.SH FILES
+.TP
+.I ~/.kgate/kgate.yaml
+конфиг (создаётся \fBkgate config create\fR).
+.TP
+.I ~/.kgate/{ca,client}.{crt,key}
+клиентские mTLS\-сертификаты (генерирует \fBdeploy\fR).
+.TP
+.I ~/.ssh/known_hosts
+host\-ключи роутеров (TOFU: пишутся при первом подключении).
+.TP
+на роутере: /opt/sbin/{kgate,sing\-box}, /opt/etc/{kgate,sing\-box},
+/opt/etc/init.d/S99kgate, /opt/etc/ndm\-commands.sh,
+/opt/var/log/{kgate,kgate\-boot,singbox}.log
+.SH EXAMPLES
+.TP
+установка «с нуля»:
+.B kgate config create && kgate deploy
+.TP
+проверка туннеля:
+.B kgate status && kgate verify
+.TP
+обновить бинарник на роутере:
+.B kgate update
+.TP
+снять весь стек:
+.B kgate destroy
+.SH SEE ALSO
+Репозиторий: https://github.com/Korrnals/kgate
+(доки: docs/admin/install.md, docs/admin/uninstall.md, docs/admin/operations.md).

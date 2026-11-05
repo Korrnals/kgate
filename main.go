@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	_ "embed"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ var appVersion = "dev"
 var cfgPath string
 var onlyStage string
 var dryRun bool
+var assumeYes bool
 
 // configTemplate is the packaged yaml template with placeholders; `kgate
 // config create` copies it to the default path and opens the editor.
@@ -30,9 +32,33 @@ var dryRun bool
 //go:embed examples/kgate.yaml.example
 var configTemplate []byte
 
+// manPage is the kgate(1) roff source; `kgate man` renders it through man(1)
+// when available.
+//
+//go:embed docs/kgate.1
+var manPage []byte
+
 // templateMarkers stay from the untouched template: if they survive the edit,
 // the config is not filled in yet and we say so loudly.
 var templateMarkers = []string{"203.0.113.10"}
+
+// stdinIsTTY reports whether stdin is an interactive terminal (destroy
+// confirmation requires one unless --yes is passed).
+func stdinIsTTY() bool {
+	st, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return st.Mode()&os.ModeCharDevice != 0
+}
+
+func stdoutIsTTY() bool {
+	st, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return st.Mode()&os.ModeCharDevice != 0
+}
 
 func load() *model.Config {
 	c, err := model.Load(cfgPath)
@@ -187,8 +213,10 @@ func main() {
   serve    — демон на роутере: супервизор sing-box, DNS-перехват (iptables),
              авто-подъём туннеля, mTLS API
   deploy   — деплой стека на роутер по ssh (payload встроен; алиас: apply)
+  destroy  — снять стек с роутера (с подтверждением; --yes для скриптов)
   config   — create/view/path/edit: yaml-конфиг по дефолтному пути
   update   — самобновление бинарника из GitHub Releases
+  man      — man-страница kgate(1)
   status/verify/toggle/ruexit/logs/reboot — mTLS-клиент с ноутбука`,
 		SilenceUsage: true,
 	}
@@ -242,6 +270,65 @@ func main() {
 	deployCmd.Flags().StringVar(&onlyStage, "only", "all", "all|files|config|ndm|services")
 	deployCmd.Flags().BoolVar(&dryRun, "dry-run", false, "показать план без изменений")
 	root.AddCommand(deployCmd)
+
+	destroy := &cobra.Command{
+		Use:     "destroy",
+		Aliases: []string{"undeploy"},
+		Short:   "снять стек с роутера (обратный deploy; подтверждение обязательно)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := load()
+			r := deploy.New(c, dryRun)
+			r.Preflight()
+			if dryRun {
+				fmt.Println("DRY-RUN — план destroy (изменений не будет):")
+			} else {
+				fmt.Println(deploy.DestroyPlan(c))
+				if !assumeYes {
+					if !stdinIsTTY() {
+						return fmt.Errorf("stdin — не терминал: подтверждение невозможно; для скриптов добавь --yes")
+					}
+					fmt.Print("\nСнять стек kgate с роутера? Введи y для продолжения: ")
+					answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+					answer = strings.ToLower(strings.TrimSpace(answer))
+					if answer != "y" && answer != "yes" && answer != "д" && answer != "да" {
+						fmt.Println("отменено — ничего не изменено")
+						return nil
+					}
+				}
+			}
+			r.Destroy()
+			return nil
+		},
+	}
+	destroy.Flags().BoolVar(&assumeYes, "yes", false, "не спрашивать подтверждение (для скриптов)")
+	destroy.Flags().BoolVar(&dryRun, "dry-run", false, "показать план без изменений")
+	root.AddCommand(destroy)
+
+	manCmd := &cobra.Command{
+		Use:   "man",
+		Short: "man-страница kgate(1) (roff; в терминале рендерится через man)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if stdoutIsTTY() {
+				if manBin, err := exec.LookPath("man"); err == nil {
+					tmp := filepath.Join(os.TempDir(), "kgate.1")
+					if err := os.WriteFile(tmp, manPage, 0o644); err == nil {
+						defer os.Remove(tmp)
+						viewer := exec.Command(manBin, "-l", tmp)
+						viewer.Stdin, viewer.Stdout, viewer.Stderr = os.Stdin, os.Stdout, os.Stderr
+						if err := viewer.Run(); err == nil {
+							return nil
+						}
+					}
+				}
+			}
+			os.Stdout.Write(manPage)
+			if stdoutIsTTY() {
+				fmt.Println("\n(hint: выше roff-исходник; man недоступен — `kgate man | man -l -` для рендера)")
+			}
+			return nil
+		},
+	}
+	root.AddCommand(manCmd)
 
 	root.AddCommand(configCmd())
 

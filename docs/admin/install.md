@@ -11,10 +11,12 @@
 Три команды и один редактор:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Korrnals/kgate/main/scripts/install.sh | sh
 kgate config create      # шаблон конфига + редактор ($VISUAL/$EDITOR)
 kgate deploy             # стек на роутер: бинари, конфиги, ndm-правила, сервис
+kgate man                # man-страница kgate(1) по всем командам
 ```
+
+Обратная операция — `kgate destroy` (с подтверждением; см. [uninstall.md](uninstall.md)).
 
 Что происходит на каждом шаге:
 

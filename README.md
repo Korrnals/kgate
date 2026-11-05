@@ -11,7 +11,7 @@
 [![api](https://img.shields.io/badge/API-mTLS%20%3A9443-2e7d32)](docs/api/authentication.md)
 [![docs](https://img.shields.io/badge/docs-полный%20комплект-blue)](#-документация)
 
-`kgate serve` · `kgate deploy` · `kgate config create` · `kgate status` · `kgate toggle on`
+`kgate serve` · `kgate deploy` · `kgate config create` · `kgate status` · `kgate destroy` · `kgate ruexit on`
 
 </div>
 
@@ -97,7 +97,7 @@ docs/
 |---|---|---|---|
 | 🧠 **Демон** | `kgate serve` | роутер (Entware, init-скрипт) | супервизор sing-box, DNS-правила, авто-подъём туннеля, толерантный SOCKS-relay для ndm, mTLS API |
 | 🎛 **Клиент** | `kgate status / verify / toggle / ruexit / logs / reboot` | ноутбук | управление и диагностика через mTLS |
-| 🚀 **Деплойер** | `kgate deploy` | ноутбук, по ssh | установка и обновление стека «с нуля», идемпотентные стадии |
+| 🚀 **Деплойер** | `kgate deploy` / `kgate destroy` | ноутбук, по ssh (чистый Go-транспорт, без ssh-бинарника) | установка/снятие стека, идемпотентные стадии; подтверждение на дестрое |
 
 ## Архитектура (кратко)
 

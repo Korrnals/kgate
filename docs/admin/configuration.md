@@ -7,7 +7,7 @@
 
 | Секция | Кто читает | Ключевое |
 |---|---|---|
-| `host`, `ssh_*` | деплойер | адрес/порт/ключ для `deploy` |
+| `host`, `ssh_*` | деплойер | адрес/порт/ключ для `deploy` (ssh-транспорт — чистый Go x/crypto/ssh: ключ из `ssh_key`, host-ключи TOFU в `~/.ssh/known_hosts`) |
 | `api` | клиент + демон | порт mTLS API, пути сертификатов (`~/.kgate/`) |
 | `daemon` | демон на роутере | пути, `rlimit_nofile`, `supervisor_interval`, `boot_autoup`, `api_listen`, `web_root`, `log` |
 

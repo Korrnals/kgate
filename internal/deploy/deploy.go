@@ -2,11 +2,9 @@
 package deploy
 
 import (
-	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
-	"os/exec"
 
 	"kgate/internal/certs"
 	"kgate/internal/model"
@@ -18,28 +16,26 @@ var Payload []byte
 type Runner struct {
 	c        *model.Config
 	dry      bool
+	ssh      *sshRunner
 	SSH      func(script string) string
 	Upld     func(data []byte, remoteCmd string) error
 	Failures func() int
 }
 
 func New(c *model.Config, dry bool) *Runner {
-	r := &Runner{c: c, dry: dry}
+	r := &Runner{c: c, dry: dry, ssh: newSSHRunner(c)}
 	failures := 0
 	r.SSH = func(script string) string {
 		if dry {
 			fmt.Println("DRY ssh:", script)
 			return ""
 		}
-		args := []string{"-p", fmt.Sprint(c.SSHPort), "-i", c.SSHKey,
-			"-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10",
-			"-o", "BatchMode=yes", c.SSHUser + "@" + c.Host, script}
-		out, err := exec.Command("ssh", args...).CombinedOutput()
+		out, err := r.ssh.run(script)
 		if err != nil {
 			failures++
-			fmt.Printf("STAGE ERROR (%d): %v\n%s\n", failures, err, string(out))
+			fmt.Printf("STAGE ERROR (%d): %v\n%s\n", failures, err, out)
 		}
-		return string(out)
+		return out
 	}
 	r.Failures = func() int { return failures }
 	r.Upld = func(data []byte, remoteCmd string) error {
@@ -47,17 +43,21 @@ func New(c *model.Config, dry bool) *Runner {
 			fmt.Println("DRY upload", len(data), "bytes ->", remoteCmd)
 			return nil
 		}
-		args := []string{"-p", fmt.Sprint(c.SSHPort), "-i", c.SSHKey,
-			"-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10",
-			"-o", "BatchMode=yes", c.SSHUser + "@" + c.Host, remoteCmd}
-		cmd := exec.Command("ssh", args...)
-		cmd.Stdin = bytes.NewReader(data)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("%v: %s", err, string(out))
-		}
-		return nil
+		return r.ssh.upload(data, remoteCmd)
 	}
 	return r
+}
+
+// DestroyPlan renders what Destroy will do — printed for confirmation.
+func DestroyPlan(c *model.Config) string {
+	return fmt.Sprintf(`Действия на роутере %s:
+  - остановить S99kgate (Proxy0 опустится — дом пойдёт напрямую)
+  - opkg remove kgate, если стек ставился пакетом (снимет и sing-box)
+  - удалить файлы: /opt/sbin/{kgate,sing-box}, /opt/etc/{kgate,sing-box},
+    init-скрипт, ndm-commands.sh, логи
+  - ndm: Proxy0 down, снять route-pin'ы (%s, 77.88.8.8) и name-server 77.88.8.8
+Останется: sshd и Entware; политики-сценарии и Proxy0 в веб-интерфейсе;
+клиентские файлы на ноутбуке (~/.kgate, ~/.local/bin/kgate).`, c.Host, c.ServerIP)
 }
 
 func (r *Runner) Files() {
@@ -148,4 +148,30 @@ func (r *Runner) Services() {
 func (r *Runner) Preflight() {
 	fmt.Println("=== preflight ===")
 	fmt.Print(r.SSH(`test -d /opt/etc/init.d || { echo "Entware NOT mounted"; exit 1; }; cat /proc/uptime | awk "{print \"uptime: \" \$1 \"s\"}"`))
+}
+
+// Destroy undoes the deploy (the mechanical part — confirmation happens in
+// main.go): stop the service, remove the stack files, clean the ndm pins.
+func (r *Runner) Destroy() {
+	fmt.Println("=== destroy: остановка и файлы ===")
+	fmt.Print(r.SSH(`/opt/etc/init.d/S99kgate stop 2>/dev/null
+if opkg list-installed | grep -q "^kgate "; then opkg remove kgate; fi
+rm -f  /opt/etc/init.d/S99kgate /opt/etc/init.d/S99kgate.disabled
+rm -rf /opt/etc/kgate /opt/etc/sing-box
+rm -f  /opt/etc/ndm-commands.sh /opt/sbin/kgate /opt/sbin/sing-box
+rm -rf /opt/var/log/kgate*.log /opt/var/log/singbox.log
+killall kgate sing-box 2>/dev/null
+echo "стек удалён"`))
+	fmt.Println("=== destroy: ndm (туннель + пины) ===")
+	ndm := `ndmc -c "interface Proxy0 down"`
+	if r.c.ServerIP != "" {
+		ndm += `
+ndmc -c "no ip route ` + r.c.ServerIP + ` ISP"`
+	}
+	ndm += `
+ndmc -c "no ip route 77.88.8.8 ISP"
+ndmc -c "no ip name-server 77.88.8.8"
+echo "ndm очищен"`
+	fmt.Print(r.SSH(ndm))
+	fmt.Println("готово. Политики-сценарии (VPN-TV и др.) и подключение Proxy0 в веб-интерфейсе удалите руками, если нужны.")
 }

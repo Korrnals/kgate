@@ -38,6 +38,10 @@ archives:
   - id: default
     formats:
       - tar.gz
+    files:
+      # бинарник + man-исходник в корне архива (install.sh кладёт kgate.1 в manpath)
+      - src: docs/kgate.1
+        dst: kgate.1
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_
       {{- .Os }}_

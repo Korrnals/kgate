@@ -8,6 +8,37 @@ follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.3.0] - 2026-11-05
+
+Deployment lifecycle and library-native transport release: the deployer
+speaks ssh itself (no ssh binary needed on the workstation), the stack
+can be removed with a single confirmed command, and the tool ships its
+own man page.
+
+### Added
+- CLI: `kgate destroy` — the inverse of `deploy`: stops S99kgate,
+  removes the stack files (running `opkg remove kgate` first when the
+  package was installed), and cleans the ndm pins (Proxy0, route-pins,
+  static name-server). Requires an interactive confirmation; `--yes`
+  skips it for scripts, `--dry-run` prints the plan. Alias: `undeploy`.
+- CLI: `kgate man` — the embedded kgate(1) man page (roff), rendered
+  through man(1) in a terminal; the release archive now carries
+  `kgate.1` and the installer places it into `~/.local/share/man/man1`.
+
+### Changed
+- deploy: the ssh transport is implemented in Go (golang.org/x/crypto/ssh)
+  instead of shelling out to the ssh(1) binary — a workstation without
+  OpenSSH works too. Key auth from `ssh_key`; host keys are verified
+  TOFU-style (accept-new) against `~/.ssh/known_hosts`, a changed key
+  fails loud. The router-side `openssh-server` dependency is unchanged
+  (it is the sshd the deployer connects to).
+- docs: uninstall.md documents `kgate destroy` as the primary path;
+  bare-ssh removal moved to alternatives-uninstall.md.
+
+### Fixed
+- CHANGELOG 1.1.1: dropped the stale `kgate-feed` repository mention
+  (the repo is retired).
+
 ## [1.2.0] - 2026-11-05
 
 Onboarding and slimming release: the primary install path is now three
@@ -96,8 +127,7 @@ feed and API pages).
 ### Added
 - opkg feed builder (`scripts/build-feed.sh`): generates an
   Entware-compatible feed (`Packages`, `Packages.gz`, `.ipk`) from
-  `dist/`, enabling `opkg install kgate` from any HTTP host; the feed
-  is published as the public `kgate-feed` repository.
+  `dist/`, enabling `opkg install kgate` from any HTTP host.
 - `KGATE_*` environment variable overrides: configuration values can
   be set or replaced via environment variables that take precedence
   over `kgate.yaml` (documented in `docs/admin/configuration.md`).

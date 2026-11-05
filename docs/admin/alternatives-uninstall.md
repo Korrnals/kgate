@@ -1,7 +1,7 @@
 # Администрирование · Альтернативные сценарии удаления
 
-> Основное удаление (зеркало `kgate deploy`) — в [uninstall.md](uninstall.md).
-> Здесь — пакетные установки, полное очищение и восстановление DNS.
+> Основное удаление — `kgate destroy` ([uninstall.md](uninstall.md)). Здесь —
+> удаление без CLI (голый ssh), полное очищение и восстановление DNS.
 
 > [!CAUTION]
 > Перед любой пакетной операцией — **бэкап конфигов**:
@@ -18,7 +18,25 @@
 > переустановка и удаление пакета живые конфиги не трогают. Для пакетов
 > ≤ 1.1.1 правило бэкапа обязательно.
 
-## 🟠 Пакетное удаление (установки через opkg: фид или `.ipk`)
+## 🟠 Удаление без CLI (голый ssh — kgate не установлен или недоступен)
+
+Для ручной раскладки (или когда клиентский бинарник недоступен):
+
+```bash
+ssh router '
+/opt/etc/init.d/S99kgate stop
+rm -f /opt/etc/init.d/S99kgate
+rm -rf /opt/etc/kgate /opt/etc/sing-box
+rm -f  /opt/etc/ndm-commands.sh /opt/sbin/kgate /opt/sbin/sing-box
+rm -rf /opt/var/log/kgate*.log /opt/var/log/singbox.log
+killall kgate sing-box 2>/dev/null
+ndmc -c "no ip route <SERVER_IP> ISP"
+ndmc -c "no ip route 77.88.8.8 ISP"
+ndmc -c "no ip name-server 77.88.8.8"
+'
+```
+
+Если стек ставился пакетом (фид/`.ipk`):
 
 ```bash
 ssh router '
