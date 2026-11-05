@@ -19,7 +19,7 @@ esac
 META=$(curl -sS ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
       "https://api.github.com/repos/${REPO}/releases/latest")
 URL=$(printf '%s' "$META" | grep -o '"browser_download_url": *"[^"]*' \
-      | grep "linux-${ARCH}.tar.gz" | head -1 | cut -d'"' -f4)
+      | grep "linux[-_]${ARCH}.tar.gz" | head -1 | cut -d'"' -f4)
 
 [ -n "$URL" ] || { echo "kgate-install: archive for linux-${ARCH} not found in the latest release" >&2; exit 1; }
 
