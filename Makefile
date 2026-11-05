@@ -45,7 +45,7 @@ payload: build/kgate-arm64 build/sing-box
 	@ls -la internal/deploy/payload.tgz | awk '{print "payload: " $$5 " bytes"}'
 
 build: payload
-	go build -ldflags "$(LDFLAGS)" -o kgate .
+	go build -tags kgate_real_payload -ldflags "$(LDFLAGS)" -o kgate .
 
 # релизные Go-бинари: демон/клиент для роутера (arm64) и оператора (amd64)
 # CGO_ENABLED=0 — оба бинаря должны быть статическими Go-исполняемыми файлами

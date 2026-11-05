@@ -16,8 +16,8 @@ import (
 	"kgate/internal/model"
 )
 
-//go:embed payload.embed.tgz
-var Payload []byte
+// Payload объявлен в deploy_stub.go (по умолчанию: 45B заглушка) и
+// deploy_real.go (-tags kgate_real_payload: реальный payload из payload.tgz).
 
 // payloadIsPlaceholder reports the embedded 45-byte stub committed for fresh
 // checkouts: deploying it would unpack nothing and wipe nothing, but the
