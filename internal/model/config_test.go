@@ -33,3 +33,25 @@ func TestExpandHomesLeavesAbsolute(t *testing.T) {
 		t.Fatalf("absolute paths must not change: %q %q", c.API.CA, c.SSHKey)
 	}
 }
+
+// integration: the v1.3.1 regression class — a tilde path arriving via yaml
+// AND via env must be expanded AFTER all sources merge (Load order).
+func TestLoadExpandsTildeFromYamlAndEnv(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	yamlPath := filepath.Join(t.TempDir(), "kgate.yaml")
+	err := os.WriteFile(yamlPath, []byte("ssh_key: ~/from-yaml\napi:\n  ca: ~/.kgate/ca.crt\n"), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KGATE_SSH_KEY", "~/from-env")
+	c, err := Load(yamlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SSHKey != filepath.Join(home, "from-env") {
+		t.Fatalf("env tilde not expanded: %q", c.SSHKey)
+	}
+	if c.API.CA != filepath.Join(home, ".kgate", "ca.crt") {
+		t.Fatalf("yaml tilde not expanded: %q", c.API.CA)
+	}
+}

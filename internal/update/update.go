@@ -359,7 +359,7 @@ func Run(appVersion string) int {
 	if _, err := os.Stat("/opt/etc/init.d/S99kgate"); err == nil {
 		fmt.Println("перезапускаю S99kgate (туннель поднимется автоматически за ~30-60с)…")
 		// stop+start вместо restart: у S99, установленного старыми версиями kgate,
-		//restart-кейса нет — self-update обязан работать с любым установленным скриптом
+		// restart-кейса нет — self-update обязан работать с любым установленным скриптом
 		cmd := exec.Command("/bin/sh", "-c",
 			"/opt/etc/init.d/S99kgate stop; sleep 1; /opt/etc/init.d/S99kgate start")
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

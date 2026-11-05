@@ -6,7 +6,43 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+## [1.4.0] - 2026-11-05
+
+Deployment lifecycle and console UX release: destroy cleans up
+completely (no ndm rudiments), every step reports itself to the console,
+and the requirements/compatibility story is documented.
+
+### Added
+- destroy: full ndm cleanup — the Proxy0 interface and the scenario
+  policies (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN) are deleted
+  outright, plus a final cleanliness step that counts kgate traces in
+  the running-config (expected 0; leftovers fail the command with exit
+  1). Verified against a live router (syntax probed on a throwaway
+  Proxy9 object first).
+- console UX: every deploy/destroy step prints a colored mark (green ✓
+  / red ✗; [OK]/[FAIL] outside terminals or with NO_COLOR) with
+  duration; successful script output is shown indented too, and failed
+  output is indented under the red mark.
+- docs: requirements & compatibility page (devices, OS versions,
+  storage, tunnel protocols, what kgate deliberately does not do) + a
+  mandatory fit-check block in the README.
+
+### Changed
+- examples/S99kgate gains a restart case (used by deploy's services
+  stage); the self-update verb keeps stop+start on purpose — old
+  deployed S99 scripts have no restart case.
+- deploy's ndm stage no longer masks script failures with a fallback
+  echo; failed steps reach the failure counter and the exit code.
+- ssh upload recovers from a stale connection once (before the first
+  byte); failures after the transfer started stay loud.
+
+### Fixed
+- deploy: `--only services` against a router deployed by an older kgate
+  no longer silently no-ops (stop+start works with any S99 generation).
+- destroy: failures now gate the exit code (asymmetric with deploy —
+  fixed); dry-run prints the plan.
+- deploy: leftover ca-bundle install dropped from the files stage
+  (follow-up to the v1.2.0 dependency slimming).
 
 ## [1.3.2] - 2026-11-05
 

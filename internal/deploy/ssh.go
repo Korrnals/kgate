@@ -147,14 +147,24 @@ func (s *sshRunner) run(script string) (string, error) {
 }
 
 // upload streams data to remoteCmd's stdin (the `cat > file` pattern).
+// A stale connection is re-established once before the first byte is sent;
+// failures after sess.Start are NOT retried (non-idempotent remote write).
 func (s *sshRunner) upload(data []byte, remoteCmd string) error {
-	if s.client == nil {
-		if err := s.connect(); err != nil {
-			return err
+	var sess *ssh.Session
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		if s.client == nil {
+			if err = s.connect(); err != nil {
+				return err
+			}
 		}
+		sess, err = s.client.NewSession()
+		if err == nil {
+			break
+		}
+		s.client = nil // stale connection — reconnect and retry once
 	}
-	sess, err := s.client.NewSession()
-	if err != nil {
+	if sess == nil || err != nil {
 		return err
 	}
 	defer sess.Close()

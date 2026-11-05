@@ -22,14 +22,14 @@ kgate destroy
   (снимет и sing-box);
 - удаляет файлы стека: `/opt/sbin/{kgate,sing-box}`, `/opt/etc/{kgate,sing-box}`,
   init-скрипт, `ndm-commands.sh`, логи;
-- чистит ndm: Proxy0 down, route-pin'ы (`server_ip`, `77.88.8.8`),
-  name-server `77.88.8.8`.
+- чистит ndm полностью: route-pin'ы (`server_ip`, `77.88.8.8`),
+  name-server `77.88.8.8`, **полное удаление интерфейса Proxy0** и
+  политик-сценариев (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN);
+- контрольный шаг: счётчик следов kgate в running-config — ожидается 0,
+  любые остатки помечаются ✗ и роняют команду (`exit 1`).
 
-На роутере останутся sshd и Entware; политики-сценарии (VPN-TV и др.) и
-подключение Proxy0 удаляются в веб-интерфейсе (Другие подключения /
-Приоритеты подключений), если нужны.
-
-Клиентская часть на ноутбуке:
+На роутере остаются только sshd и Entware — без rudimentов. Клиентская
+часть на ноутбуке:
 
 ```bash
 rm -f ~/.local/bin/kgate

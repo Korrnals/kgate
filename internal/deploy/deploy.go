@@ -81,6 +81,13 @@ func (r *Runner) step(name, script string) string {
 		}
 	} else {
 		fmt.Printf("  %s %s (%v)\n", r.mark(true), name, d)
+		// success output is visible too (indented): version evidence, S99 status,
+		// checksum lines — a green mark must be explainable from the console
+		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+			if line != "" {
+				fmt.Println("      " + line)
+			}
+		}
 	}
 	return out
 }
@@ -111,6 +118,10 @@ func (r *Runner) fatal(msg string) {
 
 // DestroyPlan renders what Destroy will do — printed for confirmation.
 func DestroyPlan(c *model.Config) string {
+	pins := c.ServerIP
+	if pins == "" {
+		pins = "—"
+	}
 	return fmt.Sprintf(`Действия на роутере %s:
   - остановить S99kgate (Proxy0 опустится — дом пойдёт напрямую)
   - opkg remove kgate, если стек ставился пакетом (снимет и sing-box)
@@ -121,7 +132,7 @@ func DestroyPlan(c *model.Config) string {
     (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
   - проверить, что следов kgate в running-config не осталось
 Останется: sshd и Entware; клиентские файлы на ноутбуке
-(~/.kgate, ~/.local/bin/kgate).`, c.Host, c.ServerIP)
+(~/.kgate, ~/.local/bin/kgate).`, c.Host, pins)
 }
 
 // ---- deploy stages ----
@@ -132,7 +143,7 @@ func (r *Runner) Preflight() {
 }
 
 func (r *Runner) Files() {
-	if payloadIsPlaceholder() {
+	if payloadIsPlaceholder() && !r.dry {
 		fmt.Println("→ deploy: files")
 		r.fatal("встроенный payload — заглушка; релизный бинарь не несёт стек. Собери локально: make payload, затем повтори kgate deploy")
 	}
@@ -194,12 +205,14 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 
 func (r *Runner) NDM() {
 	fmt.Println("→ deploy: ndm (Proxy0, пины, DNS, политики)")
-	r.step("ndm-commands.sh идемпотентным прогоном", `KGATE_SERVER_IP="`+r.c.ServerIP+`" sh /opt/etc/ndm-commands.sh 2>&1 || echo "ndm-commands.sh missing - run kgate files first"`)
+	r.step("ndm-commands.sh идемпотентным прогоном", `{ test -f /opt/etc/ndm-commands.sh || { echo "ndm-commands.sh missing — run kgate files first"; exit 1; }; KGATE_SERVER_IP="`+r.c.ServerIP+`" sh /opt/etc/ndm-commands.sh 2>&1; }`)
 }
 
 func (r *Runner) Services() {
 	fmt.Println("→ deploy: services")
-	r.step("S99kgate restart + статус демона", `/opt/etc/init.d/S99kgate restart >/dev/null 2>&1; sleep 4; /opt/etc/init.d/S99kgate status`)
+	// stop+start, не restart: у S99, развёрнутого старыми версиями kgate,
+	// restart-кейса нет — --only services обязан работать с любой генерацией скрипта
+	r.step("S99kgate stop+start + статус демона", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
 }
 
 // ---- destroy ----

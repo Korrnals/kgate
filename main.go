@@ -297,6 +297,10 @@ func main() {
 				}
 			}
 			r.Destroy()
+			if r.Failures() > 0 {
+				fmt.Printf("destroy завершён С ОШИБКАМИ (%d шагов) — см. лог выше\n", r.Failures())
+				os.Exit(1)
+			}
 			return nil
 		},
 	}

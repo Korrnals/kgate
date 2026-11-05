@@ -85,4 +85,4 @@ security: ## govulncheck на запиненном тулчейне: go run со
 clean:
 	rm -rf build dist internal/deploy/payload.tgz kgate
 
-.PHONY: ensure-empty build-arm64 build/sing-box payload build release-binaries ipk install-cli update-ca-bundle clean
+.PHONY: ensure-empty build-arm64 build/sing-box payload build release-binaries ipk install-cli update-ca-bundle verify lint test security clean

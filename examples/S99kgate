@@ -24,8 +24,8 @@ case "$1" in
   status)
     [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ] && echo running || echo stopped ;;
   restart)
-    $0 stop
+    "$0" stop
     sleep 1
-    $0 start ;;
+    "$0" start ;;
   *) echo "usage: $0 {start|stop|restart|status}" ;;
 esac
