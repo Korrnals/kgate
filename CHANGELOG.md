@@ -8,6 +8,30 @@ follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.3.2] - 2026-11-05
+
+Security-hardening release: the deploy payload can never leak into the
+repository or release artifacts again, and deploying from a payload-less
+build refuses loudly.
+
+### Fixed
+- **Incident:** the v1.3.1 release artifacts (and a git blob reachable
+  from the v1.3.1 tag) briefly contained a real deploy payload with
+  live sing-box credentials — `make payload` output was swept into a
+  commit by `git add -A` right after the path stopped being gitignored
+  (v1.2.0 committed the embed placeholder at the same path). The
+  release was retracted within minutes, the history was rewritten
+  (git filter-repo replaced the payload blob with the 45-byte stub in
+  every tree) and the affected credentials should be rotated.
+  - the real payload path `internal/deploy/payload.tgz` is gitignored
+    again; the committed embed stub now lives at
+    `internal/deploy/payload.embed.tgz` and is copied into place by
+    `make ensure-empty` (verify/lint/test depend on it).
+  - `kgate deploy` refuses loudly (before touching the router) when the
+    embedded payload is the stub: release binaries are built from clean
+    checkouts and never carry a stack — local deploys run `make payload`
+    first.
+
 ## [1.3.0] - 2026-11-05
 
 Deployment lifecycle and library-native transport release: the deployer

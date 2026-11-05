@@ -1,9 +1,14 @@
 # сборка
 kgate
 build/
-# payload.tgz: 45-байтовая пустая заглушка КОММИТИТСЯ (//go:embed требует
-# файл на свежем checkout, иначе verify/lint-гейты падают на чистой сборке);
-# реальные payload'ы генерит `make payload` и не коммитит.
+# payload.tgz = РАБОЧИЙ payload (make payload), gitignored НАВСЕГДА: он несёт
+# реальные конфиги local/etc и не должен когда-либо попасть в коммит
+# (инцидент v1.3.1: git add -A после make payload закоммитил 15MB реального
+# payload'а в публичный репо — история отскраблена, релиз отозван)
+internal/deploy/payload.tgz
+# payload.embed.tgz = 45-байтовая заглушка, КОММИТИТСЯ: //go:embed требует
+# файл на свежем checkout (иначе verify/lint-гейты падают); make ensure-empty
+# копирует её в payload.tgz
 internal/deploy/payload-empty.tgz
 
 # реальные конфиги и материалы (секреты, ключи, rulesets)

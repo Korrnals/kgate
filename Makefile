@@ -21,7 +21,7 @@ DIST_DIR ?= dist
 ETC_DIR := $(if $(wildcard local/etc/sing-box/config.json),local/etc,examples/etc)
 
 ensure-empty:
-	@if [ ! -f internal/deploy/payload.tgz ]; then mkdir -p internal/deploy && tar -czf internal/deploy/payload.tgz -T /dev/null; fi
+	@if [ ! -f internal/deploy/payload.tgz ]; then cp internal/deploy/payload.embed.tgz internal/deploy/payload.tgz; fi
 
 build/kgate-arm64: ensure-empty
 	@mkdir -p build
@@ -71,12 +71,12 @@ update-ca-bundle:
 	@awk 'BEGIN{n=0} /BEGIN CERTIFICATE/{n++} END{print "CA bundle обновлён: " n " сертификатов"}' assets/ca-bundle.crt
 
 # --- release-pipeline verify gates (make verify/lint/test/security) ----------
-verify: ## compile all packages
+verify: ensure-empty ## compile all packages (embed needs the payload stub on fresh checkouts)
 	go build ./...
-lint: ## gofmt + go vet
+lint: ensure-empty ## gofmt + go vet
 	@out=$$(gofmt -l . 2>/dev/null); if [ -n "$$out" ]; then echo "gofmt needed: $$out"; exit 1; fi
 	go vet ./...
-test: ## go test ./... (no test files yet — prints 'no test files', exits 0)
+test: ensure-empty ## go test ./...
 	go test ./...
 security: ## govulncheck на запиненном тулчейне: go run собирает analyzer тем же GOTOOLCHAIN —
 ## преbuilt-бинарь другой эпохи (напр. go1.25 на runner'е) не читает stdlib 1.26+

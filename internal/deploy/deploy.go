@@ -10,8 +10,13 @@ import (
 	"kgate/internal/model"
 )
 
-//go:embed payload.tgz
+//go:embed payload.embed.tgz
 var Payload []byte
+
+// payloadIsPlaceholder reports the embedded 45-byte stub committed for fresh
+// checkouts: deploying it would unpack nothing and wipe nothing, but the
+// stack would be left broken — refuse loudly instead.
+func payloadIsPlaceholder() bool { return len(Payload) < 1<<20 }
 
 type Runner struct {
 	c        *model.Config
@@ -61,6 +66,11 @@ func DestroyPlan(c *model.Config) string {
 }
 
 func (r *Runner) Files() {
+	if payloadIsPlaceholder() {
+		fmt.Println("FAIL: встроенный payload — заглушка (45B). Реальный стек не распространяется внутри релизного бинаря:")
+		fmt.Println("      собери его локально из каталога репо: make payload (возьмёт local/etc или examples/etc), затем повтори kgate deploy")
+		os.Exit(1)
+	}
 	fmt.Println("=== files: payload (kgate arm64 + sing-box + конфиги) ===")
 	if err := r.Upld(Payload, `cat > /tmp/payload.tgz`); err != nil {
 		fmt.Println("FAIL upload:", err)
