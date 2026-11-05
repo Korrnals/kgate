@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGATE — opkg feed</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0d1117; color:#e6edf3; font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         max-width:760px; margin:0 auto; padding:2.5rem 1.25rem 4rem; }
+  h1 { font-size:1.7rem; margin:0 0 .25rem; }
+  h1 code { color:#58a6ff; }
+  .sub { color:#8b949e; margin:0 0 2rem; }
+  h2 { font-size:1.05rem; margin:2rem 0 .5rem; color:#58a6ff; }
+  code, pre { background:#161b22; border:1px solid #30363d; border-radius:6px; }
+  code { padding:.1rem .35rem; font-size:.9em; }
+  pre { padding:.9rem 1rem; overflow-x:auto; }
+  pre code { border:none; background:none; padding:0; }
+  table { border-collapse:collapse; margin:1rem 0; }
+  td, th { border:1px solid #30363d; padding:.4rem .8rem; text-align:left; }
+  th { color:#8b949e; font-weight:600; }
+  .note { border-left:3px solid #d29922; background:#161b22; padding:.6rem .9rem; margin:1.2rem 0; font-size:.92em; }
+  a { color:#58a6ff; }
+</style>
+</head>
+<body>
+<h1><code>kgate</code> — opkg feed</h1>
+<p class="sub">Binary package feed for <strong>KGATE</strong>, the VPN-stack supervisor for
+Netcraze / Keenetic routers running Entware (sing-box engine + tolerant SOCKS relay + mTLS API).</p>
+
+<h2>Package</h2>
+<table>
+  <tr><th>Package</th><td>kgate 1.1.2-1</td></tr>
+  <tr><th>Architecture</th><td>aarch64-3.10 (Keenetic/Netcraze Entware)</td></tr>
+  <tr><th>Ships</th><td><code>/opt/sbin/kgate</code>, <code>/opt/sbin/sing-box</code> (pinned 1.11.15),
+      init script, RU-split rulesets, sanitized config templates</td></tr>
+  <tr><th>Depends</th><td>iptables, openssh-server, ca-bundle, curl</td></tr>
+</table>
+
+<h2>Install (Entware on the router)</h2>
+<pre><code># SSL-capable fetcher for opkg (once)
+opkg install wget-ssl libustream-ssl uclient-fetch
+
+# add the feed
+echo "src/gz kgate https://korrnals.github.io/kgate-feed" >> /opt/etc/opkg.conf
+
+opkg update
+opkg install kgate</code></pre>
+
+<div class="note">Notes: avoid <code>opkg install --force-reinstall</code> on this package —
+reinstall goes through the remove phase and is less tested. Use
+<code>opkg remove kgate &amp;&amp; opkg install kgate</code> instead.<br>
+Before any package remove/reinstall, back up your live configs —
+<code>/opt/etc/kgate/kgate.yaml</code> and <code>/opt/etc/sing-box/config.json</code> —
+Entware opkg replaces modified conffiles with the shipped templates.</div>
+
+<h2>After install</h2>
+<p>Edit <code>/opt/etc/kgate/kgate.yaml</code> and
+<code>/opt/etc/sing-box/config.json</code> (templates with placeholder
+<code>server</code>/<code>password</code> values), then:</p>
+<pre><code>/opt/etc/init.d/S99kgate start</code></pre>
+<p>The daemon supervises sing-box and the relay, applies ndm configuration
+(Proxy0 tunnel toggle, route pins, DNS rules) and exposes an mTLS API on
+<code>:9443</code>.</p>
+
+<p class="sub">Project source &amp; docs: <a href="https://github.com/Korrnals/kgate">github.com/Korrnals/kgate</a></p>
+</body>
+</html>
