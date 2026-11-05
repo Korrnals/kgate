@@ -98,11 +98,13 @@ USB. Возможность есть — но место там мало, и э�
 - [ ] ssh на роутер отвечает (порт 222), вход по ключу работает
 - [ ] в ndm установлен компонент «Клиент прокси»
 
-Готово — переходите к [install.md](install.md): opkg-фид, ручная установка
-или деплойер.
+Готово — переходите к [install.md](install.md) (основной путь: CLI →
+`config create` → `deploy`) или [alternatives-install.md](alternatives-install.md)
+(фид, вручную, из исходников).
 
 ## 👉 См. также
 
-- [install.md](install.md) — три пути установки
+- [install.md](install.md) — основной путь установки (деплойер)
+- [alternatives-install.md](alternatives-install.md) — фид и ручная установка
 - [configuration.md](configuration.md) — kgate.yaml, плейсхолдеры, `KGATE_*`
 - [glossary.md](../glossary.md) — Entware, payload, Proxy0

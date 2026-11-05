@@ -41,24 +41,53 @@ git pull && make build             # в каталоге клона репози
 
 | Артефакт | Для чего |
 |---|---|
-| `kgate_<ver>_linux_arm64.tar.gz` | демон/клиент на роутере (внутри — бинарь `kgate`) |
-| `kgate_<ver>_linux_amd64.tar.gz` | CLI оператора |
-| `kgate_<ver>-1_aarch64-3.10.ipk` | установка через `opkg install`; самодостаточен: `kgate` + `sing-box` + `ndm-commands.sh` + rulesets + CA-пул |
-| `checksums-sha256.txt` + подписи | контрольные суммы; подписи cosign + GPG (`.sig`/`.bundle`/`.asc`) |
+| `kgate_<ver>_linux_arm64.tar.gz` | демон/клиент на роутере (внутри — бинарь `kgate` + `kgate.1`, man-исходник) |
+| `kgate_<ver>_linux_amd64.tar.gz` | CLI оператора (то же содержимое) |
+| `kgate_<ver>-1_aarch64-3.10.ipk` | установка через `opkg install`; самодостаточен: `kgate` + `sing-box` + init/ndm-скрипты + шаблоны конфигов + rulesets + CA-пул |
+| `checksums-sha256.txt` | sha256 всех артефактов; `kgate update` проверяет по нему и отказывается ставить несовпавший архив |
+| `sbom.spdx.json` | SBOM релиза (SPDX) |
+| `<архив>.sig`, `<архив>.asc` | подписи конвейера для каждого архива |
 
-С 1.2.0 релизы собираются goreleaser'ом (репо-конфиг `.goreleaser.yaml`);
-подписи — конвейером. `kgate update` отказывается ставить архив, чья sha256
-не сошлась с `checksums-sha256.txt`.
+С 1.2.0 релизы собираются goreleaser'ом (репо-конфиг `.goreleaser.yaml`):
+архивы `kgate_<ver>_linux_<arch>.tar.gz` (+ подписи `.sig`/`.asc` от
+конвейера), индекс `checksums-sha256.txt`, ipk прикладывается к релизу
+автоматически. В релизах ≤ 1.1.1 схема была другой: голые бинари
+`kgate-<ver>-linux-<arch>` + `SHA256SUMS` + `cosign.pub` +
+`gpg-release.pub.asc` — эти имена больше не выпускаются.
 
-## 🔏 Верификация подписей (потребитель)
+### Особенности версий
+
+- **≥ 1.4.1** — релизные бинари несут **санитизированный стек** (плейсхолдеры
+  `examples/etc` вместо реальных конфигов): `kgate deploy` из релиза работает
+  из коробки и ставит стек с шаблонным конфигом; реальные креды по-прежнему
+  не попадают в релизы by construction. Локальный деплой с реальными кредами —
+  `make payload && make build`, как и раньше.
+- **1.3.2–1.4.0** — релизные бинари собраны без payload: `kgate deploy`
+  отказывает до касания роутера («собери локально: make payload»); рабочий
+  путь из релиза — пакетный (opkg) либо локальная сборка.
+- **v1.3.1** — оригинальные артефакты были отозваны через минуты после
+  публикации (утечка payload с реальными кредами; история переписана).
+  Текущие артефакты тега v1.3.1 — чистая пересборка (только 45-байтная
+  заглушка); у кого остались оригинальные — считает креды скомпрометированными
+  и ротирует серверную сторону. Подробности — v1.3.2 в [CHANGELOG](../../CHANGELOG.md).
+
+## 🔏 Верификация артефактов (потребитель)
+
+Обязательный минимум — суммы (именно их проверяет и `kgate update`):
 
 ```bash
 curl -sSLO <release-url>/checksums-sha256.txt
-# подписи (файлы .sig/.bundle/.asc прикладываются конвейером к чексамму)
-cosign verify-blob --key cosign.pub --bundle checksums-sha256.txt.bundle checksums-sha256.txt
-gpg --import gpg-release.pub.asc && gpg --verify checksums-sha256.txt.asc checksums-sha256.txt
-# суммы самих артефактов:
 sha256sum -c --ignore-missing checksums-sha256.txt
+```
+
+К каждому архиву конвейер прикладывает подписи (файлы `.sig` и `.asc` в
+ассетах релиза); проверка подписи:
+
+```bash
+# GPG-подпись архива (detached)
+gpg --verify kgate_1.4.1_linux_arm64.tar.gz.asc kgate_1.4.1_linux_arm64.tar.gz
+# cosign-bundle (ключ публикации — у мейнтейнера; в релизах ≤ 1.1.1 публиковался как cosign.pub)
+cosign verify-blob --key cosign.pub --bundle kgate_1.4.1_linux_arm64.tar.gz.sig kgate_1.4.1_linux_arm64.tar.gz
 ```
 
 ## ⏪ Откат версии
@@ -76,7 +105,7 @@ git checkout vX.Y.Z && make build && ./kgate deploy
 ## 📏 Правила релизного цикла
 
 - SemVer; несовместимые изменения конфига — только через заметки в релизе
-- артефакты всегда подписываются (SHA256 + cosign + GPG)
+- артефакты всегда сопровождаются: `checksums-sha256.txt` + подписи архивов
 - релизы публикуются через релизный конвейер (сборка → подпись → GitHub Release)
 
 ## 👉 См. также

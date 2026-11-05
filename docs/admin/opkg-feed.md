@@ -14,7 +14,8 @@ opkg upgrade kgate            # последующие обновления
 ```
 
 opkg проверит SHA256sum из индекса при скачивании. Что делает установщик и
-какие шаги следуют за ним — [install.md](install.md) (Путь A).
+какие шаги следуют за ним — [alternatives-install.md](alternatives-install.md)
+(путь «opkg-фид»); основной путь установки — [install.md](install.md).
 
 
 ## 🏗 Публикация фида (мейнтейнерам)

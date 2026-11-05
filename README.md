@@ -5,7 +5,7 @@
 **KGATE** — единая утилита для VPN-стека на роутерах **Netcraze / Keenetic**:
 демон-супервизор на роутере + mTLS-клиент + деплойер «с нуля до рабочего состояния».
 
-[![release](https://img.shields.io/badge/release-v1.4.0-4fc3f7)](https://github.com/Korrnals/kgate/releases)
+[![release](https://img.shields.io/badge/release-v1.4.1-4fc3f7)](https://github.com/Korrnals/kgate/releases)
 [![platform](https://img.shields.io/badge/platform-Netcraze%20%2F%20Keenetic-7c8cff)](#поддерживаемые-роутеры)
 [![arch](https://img.shields.io/badge/arch-aarch64%20%7C%20amd64-9fc0e8)](#артефакты)
 [![api](https://img.shields.io/badge/API-mTLS%20%3A9443-2e7d32)](docs/api/authentication.md)
@@ -67,13 +67,16 @@ docs/
 │
 ├── 🛠 admin/                        — администрирование
 │   ├── preparation.md               — 🧰 подготовка роутера и носителя Entware
-│   ├── install.md                   — установка: фид / вручную / деплойер
+│   ├── requirements.md              — 📋 требования и совместимость
+│   ├── install.md                   — установка: основной путь (CLI → config create → deploy)
+│   ├── alternatives-install.md      — альтернативы: opkg-фид, вручную, из исходников
 │   ├── configuration.md             — kgate.yaml + критичные поля sing-box
 │   ├── segments-and-policies.md     — ⚠️ сегменты ndm: грабли №1
 │   ├── operations.md                — эксплуатация и диагностика
-│   ├── releases.md                  — обновление, откат, верификация подписей
+│   ├── releases.md                  — обновление, откат, верификация артефактов
 │   ├── opkg-feed.md                 — 📦 opkg-фид: подключение и публикация
-│   └── uninstall.md                 — 🔴 удаление и очищение
+│   ├── uninstall.md                 — 🔴 удаление и очищение
+│   └── alternatives-uninstall.md    — удаление без CLI, полное очищение
 │
 ├── 👤 user/                         — пользователю
 │   ├── getting-started.md           — начало работы
@@ -174,7 +177,7 @@ ndm-скриптов — `examples/` (проверяется на этапе с�
 - mTLS: клиентский сертификат обязателен; ключи сервера — только на роутере
 - API не экспонируется в интернет (LAN + файрвол)
 - секреты стека не входят в репозиторий: `examples/` — шаблоны, `local/` — реальные (gitignored)
-- деплой — по ssh ключом, BatchMode; интерактивных паролей нет
+- деплой — по ssh ключом (чистый Go-транспорт x/crypto/ssh, host-ключи TOFU в `~/.ssh/known_hosts`); интерактивных паролей нет
 
 ## Roadmap
 
