@@ -23,5 +23,9 @@ case "$1" in
     echo "kgate stopped" ;;
   status)
     [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ] && echo running || echo stopped ;;
-  *) echo "usage: $0 {start|stop|status}" ;;
+  restart)
+    $0 stop
+    sleep 1
+    $0 start ;;
+  *) echo "usage: $0 {start|stop|restart|status}" ;;
 esac

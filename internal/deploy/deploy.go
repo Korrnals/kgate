@@ -1,10 +1,14 @@
 // Package deploy pushes kgate and the VPN stack to the router over ssh.
+// Every stage reports itself to the console with a colored ✓/✗ mark and
+// duration (plain text when stdout is not a terminal or NO_COLOR is set).
 package deploy
 
 import (
 	_ "embed"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"kgate/internal/certs"
 	"kgate/internal/model"
@@ -21,36 +25,88 @@ func payloadIsPlaceholder() bool { return len(Payload) < 1<<20 }
 type Runner struct {
 	c        *model.Config
 	dry      bool
+	color    bool
 	ssh      *sshRunner
-	SSH      func(script string) string
-	Upld     func(data []byte, remoteCmd string) error
-	Failures func() int
+	failures int
 }
 
 func New(c *model.Config, dry bool) *Runner {
-	r := &Runner{c: c, dry: dry, ssh: newSSHRunner(c)}
-	failures := 0
-	r.SSH = func(script string) string {
-		if dry {
-			fmt.Println("DRY ssh:", script)
-			return ""
-		}
-		out, err := r.ssh.run(script)
-		if err != nil {
-			failures++
-			fmt.Printf("STAGE ERROR (%d): %v\n%s\n", failures, err, out)
-		}
-		return out
+	return &Runner{c: c, dry: dry, color: useColor(), ssh: newSSHRunner(c)}
+}
+
+// Failures returns the number of failed steps so far.
+func (r *Runner) Failures() int { return r.failures }
+
+// ---- console UX ----
+
+func useColor() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
 	}
-	r.Failures = func() int { return failures }
-	r.Upld = func(data []byte, remoteCmd string) error {
-		if dry {
-			fmt.Println("DRY upload", len(data), "bytes ->", remoteCmd)
-			return nil
+	st, err := os.Stdout.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
+func (r *Runner) mark(ok bool) string {
+	if !r.color {
+		if ok {
+			return "[OK]"
 		}
-		return r.ssh.upload(data, remoteCmd)
+		return "[FAIL]"
 	}
-	return r
+	if ok {
+		return "\033[32m✓\033[0m"
+	}
+	return "\033[31m✗\033[0m"
+}
+
+// step runs a named script, printing a colored ✓/✗ line with duration; on
+// failure the script output is indented under the mark and failures counter
+// grows.
+func (r *Runner) step(name, script string) string {
+	if r.dry {
+		fmt.Printf("  %s %s (dry-run, скрипт пропущен)\n", r.mark(true), name)
+		return ""
+	}
+	t0 := time.Now()
+	out, err := r.ssh.run(script)
+	d := time.Since(t0).Round(100 * time.Millisecond)
+	if err != nil {
+		r.failures++
+		fmt.Printf("  %s %s (%v)\n", r.mark(false), name, d)
+		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+			if line != "" {
+				fmt.Println("      " + line)
+			}
+		}
+	} else {
+		fmt.Printf("  %s %s (%v)\n", r.mark(true), name, d)
+	}
+	return out
+}
+
+// upload transfers data with the same step reporting; fatal failures abort.
+func (r *Runner) upload(data []byte, remoteCmd, name string) {
+	if r.dry {
+		fmt.Printf("  %s %s (dry-run, %d байт не передаются)\n", r.mark(true), name, len(data))
+		return
+	}
+	t0 := time.Now()
+	err := r.ssh.upload(data, remoteCmd)
+	d := time.Since(t0).Round(100 * time.Millisecond)
+	if err != nil {
+		r.failures++
+		fmt.Printf("  %s %s (%v): %v\n", r.mark(false), name, d, err)
+		return
+	}
+	fmt.Printf("  %s %s — %d байт (%v)\n", r.mark(true), name, len(data), d)
+}
+
+// fatal prints a red abort line and exits — used for pre-flight blockers
+// where continuing would leave the router half-configured.
+func (r *Runner) fatal(msg string) {
+	fmt.Printf("  %s %s\n", r.mark(false), msg)
+	os.Exit(1)
 }
 
 // DestroyPlan renders what Destroy will do — printed for confirmation.
@@ -60,23 +116,29 @@ func DestroyPlan(c *model.Config) string {
   - opkg remove kgate, если стек ставился пакетом (снимет и sing-box)
   - удалить файлы: /opt/sbin/{kgate,sing-box}, /opt/etc/{kgate,sing-box},
     init-скрипт, ndm-commands.sh, логи
-  - ndm: Proxy0 down, снять route-pin'ы (%s, 77.88.8.8) и name-server 77.88.8.8
-Останется: sshd и Entware; политики-сценарии и Proxy0 в веб-интерфейсе;
-клиентские файлы на ноутбуке (~/.kgate, ~/.local/bin/kgate).`, c.Host, c.ServerIP)
+  - ndm: снять route-pin'ы (%s, 77.88.8.8) и name-server 77.88.8.8
+  - ndm: ПОЛНОСТЬЮ удалить интерфейс Proxy0 и политики-сценарии
+    (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
+  - проверить, что следов kgate в running-config не осталось
+Останется: sshd и Entware; клиентские файлы на ноутбуке
+(~/.kgate, ~/.local/bin/kgate).`, c.Host, c.ServerIP)
+}
+
+// ---- deploy stages ----
+
+func (r *Runner) Preflight() {
+	fmt.Println("→ preflight")
+	r.step("Entware на месте, uptime", `test -d /opt/etc/init.d || { echo "Entware NOT mounted"; exit 1; }; cat /proc/uptime | awk "{print \"uptime: \" \$1 \"s\"}"`)
 }
 
 func (r *Runner) Files() {
 	if payloadIsPlaceholder() {
-		fmt.Println("FAIL: встроенный payload — заглушка (45B). Реальный стек не распространяется внутри релизного бинаря:")
-		fmt.Println("      собери его локально из каталога репо: make payload (возьмёт local/etc или examples/etc), затем повтори kgate deploy")
-		os.Exit(1)
+		fmt.Println("→ deploy: files")
+		r.fatal("встроенный payload — заглушка; релизный бинарь не несёт стек. Собери локально: make payload, затем повтори kgate deploy")
 	}
-	fmt.Println("=== files: payload (kgate arm64 + sing-box + конфиги) ===")
-	if err := r.Upld(Payload, `cat > /tmp/payload.tgz`); err != nil {
-		fmt.Println("FAIL upload:", err)
-		os.Exit(1)
-	}
-	fmt.Print(r.SSH(`mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
+	fmt.Println("→ deploy: files")
+	r.upload(Payload, `cat > /tmp/payload.tgz`, "передача payload на роутер")
+	r.step("распаковка и раскладка (бинари, S99, ndm, конфиг, rulesets)", `mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
 mv -f kgate-arm64 /opt/sbin/kgate
 mv -f sing-box /opt/sbin/sing-box
 mv -f ndm-commands.sh /opt/etc/ndm-commands.sh
@@ -89,43 +151,32 @@ grep -q "^sshd:" /opt/etc/passwd || cat root/opt/etc/passwd >> /opt/etc/passwd
 chmod +x /opt/sbin/kgate /opt/sbin/sing-box /opt/etc/init.d/S99kgate
 rm -rf /tmp/px /tmp/payload.tgz
 mkdir -p /opt/etc/kgate /opt/etc/ssh /opt/var/log /opt/var/run
-/opt/sbin/kgate version | head -1
-opkg update >/dev/null 2>&1; for p in iptables openssh-server ca-bundle; do opkg list-installed | grep -q "^$p " || opkg install $p; done
-opkg list-installed | grep -E "^(iptables|openssh-server) " | head -2`))
+/opt/sbin/kgate version | head -1`)
+	r.step("opkg-зависимости (iptables, openssh-server)", `opkg update >/dev/null 2>&1; for p in iptables openssh-server; do opkg list-installed | grep -q "^$p " || opkg install $p; done; opkg list-installed | grep -E "^(iptables|openssh-server) " | head -2`)
 }
 
 func (r *Runner) Migrate() {
-	fmt.Println("=== migrate: legacy-обвязка -> демон ===")
-	// 0) retire a previous routerctl install (if any); the kgate daemon takes over the stack
-	fmt.Print(r.SSH(`[ -f /opt/etc/init.d/S99routerctl ] && { /opt/etc/init.d/S99routerctl stop 2>/dev/null; mv /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled; }
+	fmt.Println("→ deploy: migrate (legacy под замок)")
+	// retire a previous routerctl install (if any); the kgate daemon takes over the stack
+	r.step("retire S99routerctl, глушение S99sing-box/S24xray, чистка rc.unslung", `[ -f /opt/etc/init.d/S99routerctl ] && { /opt/etc/init.d/S99routerctl stop 2>/dev/null; mv /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled; }
 rm -f /opt/var/run/routerctl*.pid /opt/var/run/routerctl.pid
-true`))
-	fmt.Print(r.SSH(`
-# 1) старый S99sing-box под замок (иначе задвоит sing-box с демоном)
 [ -f /opt/etc/init.d/S99sing-box ] && mv /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled
-# 2) удалить legacy-строки из rc.unslung (watchdog/apply/boot-autoup теперь внутри демона)
 grep -vE "(rc-redirect|boot-autoup|\{kgate\})" /opt/etc/init.d/rc.unslung > /tmp/rcu && cat /tmp/rcu > /opt/etc/init.d/rc.unslung && rm /tmp/rcu
-# 3) убить старый watchdog и его инстансы
 for P in $(ps w | grep rc-redirect-watchdog | grep -v grep | awk "{print \$1}"); do kill $P 2>/dev/null; done
-# 4) xray больше не нужен (заменил relay в kgate)
 [ -f /opt/etc/init.d/S24xray ] && mv /opt/etc/init.d/S24xray /opt/etc/init.d/S24xray.disabled
 killall xray 2>/dev/null
-echo "legacy disabled"`))
+echo "legacy disabled"`)
 }
 
 func (r *Runner) ConfigAndCerts(cfg *model.Config) {
-	fmt.Println("=== config + mTLS certs ===")
+	fmt.Println("→ deploy: config + mTLS certs")
 	yml, _ := yamlMarshal(cfg)
-	if err := r.Upld(yml, `mkdir -p /opt/etc/kgate && cat > /opt/etc/kgate/kgate.yaml`); err != nil {
-		fmt.Println("FAIL config upload:", err)
-		os.Exit(1)
-	}
+	r.upload(yml, `mkdir -p /opt/etc/kgate && cat > /opt/etc/kgate/kgate.yaml`, "рендер kgate.yaml на роутер")
 	created, err := certs.Ensure(homeDir()+"/.kgate", cfg.Host)
 	if err != nil {
-		fmt.Println("FAIL certs:", err)
-		os.Exit(1)
+		r.fatal("генерация mTLS-сертификатов: " + err.Error())
 	}
-	fmt.Println("certs:", map[bool]string{true: "сгенерированы новые", false: "переиспользованы существующие"}[created])
+	fmt.Printf("  %s mTLS-сертификаты: %s\n", r.mark(true), map[bool]string{true: "сгенерированы новые (ECDSA P-256)", false: "переиспользованы существующие"}[created])
 	home := homeDir()
 	for _, pair := range [][2]string{
 		{home + "/.kgate/ca.crt", "/opt/etc/kgate/ca.crt"},
@@ -134,54 +185,67 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 	} {
 		b, err := os.ReadFile(pair[0])
 		if err != nil {
-			fmt.Println("FAIL read", pair[0], err)
-			os.Exit(1)
+			r.fatal("чтение " + pair[0] + ": " + err.Error())
 		}
-		if err := r.Upld(b, `cat > `+pair[1]); err != nil {
-			fmt.Println("FAIL cert upload:", err)
-			os.Exit(1)
-		}
+		r.upload(b, `cat > `+pair[1], "загрузка "+pair[1])
 	}
-	fmt.Print(r.SSH(`chmod 600 /opt/etc/kgate/server.key`))
+	r.step("chmod 600 server.key", `chmod 600 /opt/etc/kgate/server.key`)
 }
 
 func (r *Runner) NDM() {
-	fmt.Println("=== ndm: Proxy0, pins, DNS, политики ===")
-	fmt.Print(r.SSH(`KGATE_SERVER_IP="` + r.c.ServerIP + `" sh /opt/etc/ndm-commands.sh 2>&1 || echo "ndm-commands.sh missing - run kgate files first"`))
+	fmt.Println("→ deploy: ndm (Proxy0, пины, DNS, политики)")
+	r.step("ndm-commands.sh идемпотентным прогоном", `KGATE_SERVER_IP="`+r.c.ServerIP+`" sh /opt/etc/ndm-commands.sh 2>&1 || echo "ndm-commands.sh missing - run kgate files first"`)
 }
 
 func (r *Runner) Services() {
-	fmt.Println("=== services: S99kgate start (демон берёт стек) ===")
-	fmt.Print(r.SSH(`/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`))
+	fmt.Println("→ deploy: services")
+	r.step("S99kgate restart + статус демона", `/opt/etc/init.d/S99kgate restart >/dev/null 2>&1; sleep 4; /opt/etc/init.d/S99kgate status`)
 }
 
-func (r *Runner) Preflight() {
-	fmt.Println("=== preflight ===")
-	fmt.Print(r.SSH(`test -d /opt/etc/init.d || { echo "Entware NOT mounted"; exit 1; }; cat /proc/uptime | awk "{print \"uptime: \" \$1 \"s\"}"`))
-}
+// ---- destroy ----
 
 // Destroy undoes the deploy (the mechanical part — confirmation happens in
-// main.go): stop the service, remove the stack files, clean the ndm pins.
+// main.go): stop the service, remove the stack files, delete the ndm objects
+// (Proxy0 interface AND scenario policies — no rudiments left behind) and
+// verify the running-config is clean.
 func (r *Runner) Destroy() {
-	fmt.Println("=== destroy: остановка и файлы ===")
-	fmt.Print(r.SSH(`/opt/etc/init.d/S99kgate stop 2>/dev/null
+	fmt.Println("→ destroy: остановка и пакет")
+	r.step("S99kgate stop (Proxy0 down) + opkg remove kgate", `/opt/etc/init.d/S99kgate stop 2>/dev/null
 if opkg list-installed | grep -q "^kgate "; then opkg remove kgate; fi
-rm -f  /opt/etc/init.d/S99kgate /opt/etc/init.d/S99kgate.disabled
+killall kgate sing-box 2>/dev/null
+echo "stack stopped"`)
+
+	fmt.Println("→ destroy: файлы стека")
+	r.step("удаление бинарей, init-скрипта, конфигов и логов", `rm -f  /opt/etc/init.d/S99kgate /opt/etc/init.d/S99kgate.disabled
 rm -rf /opt/etc/kgate /opt/etc/sing-box
 rm -f  /opt/etc/ndm-commands.sh /opt/sbin/kgate /opt/sbin/sing-box
 rm -rf /opt/var/log/kgate*.log /opt/var/log/singbox.log
-killall kgate sing-box 2>/dev/null
-echo "стек удалён"`))
-	fmt.Println("=== destroy: ndm (туннель + пины) ===")
-	ndm := `ndmc -c "interface Proxy0 down"`
+echo "stack files removed"`)
+
+	fmt.Println("→ destroy: ndm (пины, DNS)")
+	pins := ""
 	if r.c.ServerIP != "" {
-		ndm += `
+		pins += `
 ndmc -c "no ip route ` + r.c.ServerIP + ` ISP"`
 	}
-	ndm += `
+	pins += `
 ndmc -c "no ip route 77.88.8.8 ISP"
 ndmc -c "no ip name-server 77.88.8.8"
-echo "ndm очищен"`
-	fmt.Print(r.SSH(ndm))
-	fmt.Println("готово. Политики-сценарии (VPN-TV и др.) и подключение Proxy0 в веб-интерфейсе удалите руками, если нужны.")
+echo "pins removed"`
+	r.step("снятие route-pin'ов и name-server", pins)
+
+	fmt.Println("→ destroy: ndm (объекты)")
+	r.step("удаление интерфейса Proxy0 и политик-сценариев", `ndmc -c "no ip policy VPN-TV"
+ndmc -c "no ip policy VPN-Laptops-Phones"
+ndmc -c "no ip policy DIRECT-NOVPN"
+ndmc -c "no interface Proxy0"
+echo "ndm objects removed"`)
+
+	fmt.Println("→ destroy: контроль чистоты")
+	// скрипт сам валидирует счётчик (test -eq 0): при остатках step поставит ✗
+	// и напечатает leftover=N с отступом
+	r.step("следы kgate в running-config (ожидаем 0)", `LEFT=$(ndmc -c "show running-config" 2>/dev/null | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
+echo "leftover=$LEFT"
+test "$LEFT" -eq 0`)
+	fmt.Println("готово. На ноутбуке остались клиентские файлы (~/.kgate, ~/.local/bin/kgate) — удали руками, если больше не нужен клиент.")
 }
