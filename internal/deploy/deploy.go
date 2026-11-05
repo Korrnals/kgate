@@ -4,6 +4,8 @@
 package deploy
 
 import (
+	"path/filepath"
+
 	_ "embed"
 	"fmt"
 	"os"
@@ -182,16 +184,19 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 		fmt.Printf("  %s mTLS-сертификаты (dry-run: генерация и чтение пропущены)\n", r.mark(true))
 		return
 	}
-	created, err := certs.Ensure(homeDir()+"/.kgate", cfg.Host)
+	// каталог сертов = каталог api.ca из конфига (уже развёрнут expandHomes;
+	// имена файлов фиксированы генерацией certs.Ensure)
+	certDir := filepath.Dir(cfg.API.CA)
+	created, err := certs.Ensure(certDir, cfg.Host)
 	if err != nil {
 		r.fatal("генерация mTLS-сертификатов: " + err.Error())
 	}
 	fmt.Printf("  %s mTLS-сертификаты: %s\n", r.mark(true), map[bool]string{true: "сгенерированы новые (ECDSA P-256)", false: "переиспользованы существующие"}[created])
-	home := homeDir()
+	home := certDir
 	for _, pair := range [][2]string{
-		{home + "/.kgate/ca.crt", "/opt/etc/kgate/ca.crt"},
-		{home + "/.kgate/server.crt", "/opt/etc/kgate/server.crt"},
-		{home + "/.kgate/server.key", "/opt/etc/kgate/server.key"},
+		{home + "/ca.crt", "/opt/etc/kgate/ca.crt"},
+		{home + "/server.crt", "/opt/etc/kgate/server.crt"},
+		{home + "/server.key", "/opt/etc/kgate/server.key"},
 	} {
 		b, err := os.ReadFile(pair[0])
 		if err != nil {
@@ -256,7 +261,8 @@ echo "ndm objects removed"`)
 	fmt.Println("→ destroy: контроль чистоты")
 	// скрипт сам валидирует счётчик (test -eq 0): при остатках step поставит ✗
 	// и напечатает leftover=N с отступом
-	r.step("следы kgate в running-config (ожидаем 0)", `LEFT=$(ndmc -c "show running-config" 2>/dev/null | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
+	r.step("следы kgate в running-config (ожидаем 0)", `command -v ndmc >/dev/null || { echo "ndmc not found"; exit 1; }
+LEFT=$(ndmc -c "show running-config" 2>/dev/null | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
 echo "leftover=$LEFT"
 test "$LEFT" -eq 0`)
 	fmt.Println("готово. На ноутбуке остались клиентские файлы (~/.kgate, ~/.local/bin/kgate) — удали руками, если больше не нужен клиент.")

@@ -235,6 +235,11 @@ func main() {
 		Aliases: []string{"apply"},
 		Short:   "деплой стека на роутер по ssh (с нуля до рабочего состояния)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			switch onlyStage {
+			case "all", "files", "config", "ndm", "services":
+			default:
+				return fmt.Errorf("неизвестное значение --only: %q (разрешены: all, files, config, ndm, services)", onlyStage)
+			}
 			c := load()
 			r := deploy.New(c, dryRun)
 			r.Preflight()
@@ -280,7 +285,7 @@ func main() {
 			r := deploy.New(c, dryRun)
 			fmt.Println(deploy.DestroyPlan(c)) // план всегда первым — и в dry-run, и перед подтверждением
 			if dryRun {
-				fmt.Println("DRY-RUN — план destroy (изменений не будет):")
+				fmt.Println("DRY-RUN — изменений не будет.")
 				return nil
 			}
 			r.Preflight()
@@ -350,7 +355,7 @@ func main() {
 		Short: "генерация mTLS-сертификатов локально (обычно не нужна — deploy делает сам)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := load()
-			created, err := certs.Ensure(homeOr(c.API.CA), c.Host)
+			created, err := certs.Ensure(filepath.Dir(c.API.CA), c.Host)
 			if err != nil {
 				return err
 			}
@@ -392,12 +397,4 @@ func main() {
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
-}
-
-func homeOr(_ string) string {
-	h, err := os.UserHomeDir()
-	if err != nil {
-		return "/tmp/.kgate"
-	}
-	return h + "/.kgate"
 }

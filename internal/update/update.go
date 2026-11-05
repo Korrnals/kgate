@@ -231,7 +231,10 @@ func extractMember(archivePath, member, dst string) error {
 
 // latestRelease queries the GitHub Releases API (anonymous; the repo is public).
 func latestRelease() (*Release, error) {
-	req, _ := http.NewRequest("GET", "https://api.github.com/repos/"+repo+"/releases/latest", nil)
+	req, err := http.NewRequest("GET", "https://api.github.com/repos/"+repo+"/releases/latest", nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	var lastErr error
 	for _, hc := range clients() {
@@ -240,16 +243,19 @@ func latestRelease() (*Release, error) {
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
 			return nil, fmt.Errorf("в %s ещё нет релизов", repo)
 		}
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			lastErr = fmt.Errorf("GitHub API: HTTP %d", resp.StatusCode)
 			continue
 		}
 		var rel Release
-		if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		err = json.NewDecoder(resp.Body).Decode(&rel)
+		resp.Body.Close()
+		if err != nil {
 			return nil, err
 		}
 		return &rel, nil
