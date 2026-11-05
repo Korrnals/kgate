@@ -6,6 +6,38 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- ssh: self-managed keypair — kgate generates its own ed25519 pair
+  (`~/.kgate/id_ed25519`, new default for `ssh_key`) and installs the
+  public key on the router with a one-time password (env
+  `KGATE_SSH_PASSWORD` or interactive prompt); append-only, existing
+  keys preserved. Bootstrap chain: password on the main port →
+  firmware ssh+SFTP (port 22, KeeneticOS admin user, default `temp`)
+  for the case when the Entware keys file is clobbered/missing.
+
+### Fixed
+- deploy: the files stage never clobbers `/opt/etc/ssh/authorized_keys`
+  anymore — release payloads carry a sanitized placeholder key, and the
+  unconditional copy locked the operator out of the Entware sshd
+  (caught live by the manual-based E2E on v1.4.1).
+- install.sh: release archives were renamed to
+  `kgate_<ver>_linux_<arch>.tar.gz` (underscores) in v1.4.0, but the
+  installer kept grepping the legacy hyphen form — the primary-path
+  install found no asset.
+- update.go: response bodies closed per-iteration; request error checked.
+
+## [1.4.1] - 2026-11-05
+
+### Added
+- release binaries carry the sanitized stack (examples/etc placeholders
+  + rulesets + binaries) via `make payload-release` + goreleaser build
+  tag: `kgate deploy` from an installed release installs the stack out
+  of the box — real credentials never enter release builds by
+  construction (the v1.3.1 lesson, verified by payload marker check).
+
+### Fixed
+- man page version string synced to the release.
+
 ## [1.4.0] - 2026-11-05
 
 Deployment lifecycle and console UX release: destroy cleans up
