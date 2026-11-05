@@ -2,6 +2,7 @@ package model
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -131,7 +132,30 @@ func Load(path string) (*Config, error) {
 	}
 	c.fillDefaults()
 	applyEnv(c)
+	expandHomes(c)
 	return c, nil
+}
+
+// expandHome rewrites a leading ~ (or ~/) with the user's home directory:
+// yaml/env values arrive as literals and os.ReadFile does not expand them
+// (the shipped template uses ~/.kgate/... — found by the full
+// destroy→config create→deploy E2E).
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(p, "~"), "/"))
+		}
+	}
+	return p
+}
+
+// expandHomes expands ~ in the client-side file paths after all config
+// sources (yaml > defaults > env) have been merged.
+func expandHomes(c *Config) {
+	c.SSHKey = expandHome(c.SSHKey)
+	c.API.CA = expandHome(c.API.CA)
+	c.API.Cert = expandHome(c.API.Cert)
+	c.API.Key = expandHome(c.API.Key)
 }
 
 // applyEnv применяет переменные окружения KGATE_* поверх yaml.
