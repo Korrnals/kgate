@@ -78,6 +78,27 @@ func Status(c *model.Config) {
 	fmt.Println(pretty(b))
 }
 
+// WaitProxyUp polls the daemon until Proxy0 is up (deploy uses it to wait out
+// the autoup delay instead of failing the battery at +5s). Soft-fails on
+// transient connection errors and keeps polling.
+func WaitProxyUp(c *model.Config, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	client := httpc(c)
+	url := fmt.Sprintf("https://%s:%d/api/v1/status", c.Host, c.API.Port)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(url)
+		if err == nil {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if strings.Contains(string(b), "state: up") {
+				return true
+			}
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return false
+}
+
 func Verify(c *model.Config) {
 	b, code := api(c, "GET", "/api/v1/verify", nil)
 	fmt.Println("=== verify daemon (mTLS", code, ") ===")

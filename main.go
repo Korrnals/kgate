@@ -264,10 +264,15 @@ func main() {
 				os.Exit(1)
 			}
 			if !dryRun && onlyStage == "all" {
-				fmt.Println("=== ждём демона и верифицируем ===")
-				time.Sleep(5 * time.Second)
-				client.Status(c)
-				client.Verify(c)
+				fmt.Println("=== ждём демона и подъём туннеля (до 90с) ===")
+				if client.WaitProxyUp(c, 90*time.Second) {
+					fmt.Println("=== туннель поднят — верифицируем ===")
+					time.Sleep(3 * time.Second)
+					client.Status(c)
+					client.Verify(c)
+				} else {
+					fmt.Println("туннель не поднялся за 90с — стек установлен; диагностика: kgate verify, kgate logs")
+				}
 			}
 			return nil
 		},

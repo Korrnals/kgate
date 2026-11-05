@@ -29,7 +29,8 @@ type Daemon struct {
 	mgr      *procManager
 	lastIPOK bool
 	upOnce   bool
-	cfgWarn  bool // template placeholders detected: do not auto-raise a dead tunnel
+	cfgWarn  bool   // template placeholders detected: do not auto-raise a dead tunnel
+	pin      string // currently pinned hy2 server IP (route-pin follows DNS)
 }
 
 func New(cfg *model.Config) *Daemon {
@@ -236,6 +237,70 @@ func (d *Daemon) iptablesApply() string {
 echo dns-rules-applied`)
 }
 
+// ---- hy2 server route-pin (dynamic) ----
+
+// serverHost extracts the hysteria2 server address from the sing-box config
+// (the daemon is the source of truth for the tunnel endpoint).
+func (d *Daemon) serverHost() string {
+	b, err := os.ReadFile(d.cfg.Daemon.SingBoxConfig)
+	if err != nil {
+		return d.cfg.ServerIP // fallback: operator yaml value
+	}
+	var sb struct {
+		Outbounds []struct {
+			Type   string `json:"type"`
+			Server string `json:"server"`
+		} `json:"outbounds"`
+	}
+	if json.Unmarshal(b, &sb) != nil {
+		return d.cfg.ServerIP
+	}
+	for _, ob := range sb.Outbounds {
+		if ob.Type == "hysteria2" && ob.Server != "" {
+			return ob.Server
+		}
+	}
+	return d.cfg.ServerIP
+}
+
+// syncServerPin keeps the ndm route-pin pointed at the CURRENT address of the
+// hy2 server. The server-side DNS watchdog flips cdn.srwx.ru between exits
+// (failover); a stale pin routes the tunnel's own traffic through Proxy0 —
+// self-loop, no internet (the 03.11 class). Runs every supervisor tick.
+func (d *Daemon) syncServerPin(logger func(string)) {
+	host := d.serverHost()
+	if host == "" {
+		return
+	}
+	if net.ParseIP(host) != nil { // literal IP needs no resolution
+		return
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return // resolver hiccup — keep the current pin
+	}
+	var v4 net.IP
+	for _, ip := range ips {
+		if v4 = ip.To4(); v4 != nil {
+			break
+		}
+	}
+	if v4 == nil {
+		return
+	}
+	want := v4.String()
+	if want == d.pin {
+		return
+	}
+	if d.pin != "" {
+		d.ndmc(fmt.Sprintf("no ip route %s ISP", d.pin))
+	}
+	d.ndmc(fmt.Sprintf("ip route %s ISP", want))
+	old := d.pin
+	d.pin = want
+	logger("route-pin: " + old + " -> " + want + " (DNS сервера уехал — пин обновлён)")
+}
+
 // ---- tunnel ----
 
 func (d *Daemon) toggle(state string) string {
@@ -364,6 +429,7 @@ func (d *Daemon) Run() error {
 	}
 
 	// once at startup: clear foreign processes and take ownership of the stack
+	d.pin = d.cfg.ServerIP // deploy запинил этот адрес в ndm-commands.sh
 	d.mgr.killAll()
 	d.warnPlaceholders(logger)
 	logger("supervisor: принял стек (sing-box + xray)")
@@ -398,10 +464,12 @@ func (d *Daemon) Run() error {
 	interval := model.Dur(d.cfg.Daemon.Interval, 15*time.Second)
 	tick := time.NewTicker(interval)
 	go func() {
+		d.syncServerPin(logger) // pin мог устареть за время простоя
 		for range tick.C {
 			for _, l := range d.mgr.ensure() {
 				logger("supervisor: " + l)
 			}
+			d.syncServerPin(logger)
 			if !d.iptablesOK() {
 				logger("supervisor: dns-rules снесены — восстанавливаю")
 				d.iptablesApply()
