@@ -8,12 +8,14 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"kgate/internal/model"
@@ -101,4 +103,70 @@ echo key-installed`, pub, pub)
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// installPubKeyViaFirmwareSftp bootstraps through the FIRMWARE ssh (port 22,
+// KeeneticOS users with «Командная строка» + SFTP): appends the operator
+// public key to /opt/etc/ssh/authorized_keys. Works even when the Entware
+// sshd keys are clobbered/missing — the firmware authenticates its own users
+// independently of Entware.
+func installPubKeyViaFirmwareSftp(cfg *model.Config, adminLogin, adminPassword, pub string) error {
+	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:22", cfg.Host), &ssh.ClientConfig{
+		User: adminLogin,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(adminPassword),
+			ssh.KeyboardInteractive(func(_, _ string, _ []string, _ []bool) ([]string, error) {
+				return []string{adminPassword}, nil
+			}),
+		},
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil // one-time LAN session; the operator key is appended, not replaced
+		},
+		Timeout: 10 * time.Second,
+	})
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	sftpCli, err := sftp.NewClient(client)
+	if err != nil {
+		return fmt.Errorf("sftp: %w", err)
+	}
+	defer sftpCli.Close()
+	const keysPath = "/opt/etc/ssh/authorized_keys"
+	existing, _ := sftpRead(sftpCli, keysPath)
+	if strings.Contains(existing, pub) {
+		return nil // already installed
+	}
+	content := strings.TrimRight(existing, "\n")
+	if content != "" {
+		content += "\n"
+	}
+	content += pub + "\n"
+	wf, err := sftpCli.OpenFile(keysPath, os.O_WRONLY|os.O_TRUNC)
+	if err != nil {
+		wf, err = sftpCli.OpenFile(keysPath, os.O_WRONLY|os.O_CREATE)
+		if err != nil {
+			return fmt.Errorf("открыть %s: %w", keysPath, err)
+		}
+	}
+	if _, err := wf.Write([]byte(content)); err != nil {
+		wf.Close()
+		return err
+	}
+	if err := wf.Close(); err != nil {
+		return err
+	}
+	_ = sftpCli.Chmod(keysPath, 0o600)
+	return nil
+}
+
+func sftpRead(cli *sftp.Client, path string) (string, error) {
+	f, err := cli.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	return string(b), err
 }

@@ -120,15 +120,28 @@ func (s *sshRunner) connect() error {
 	client, err := dial()
 	if err != nil && strings.Contains(err.Error(), "unable to authenticate") {
 		// key not installed on the router yet (fresh setup / keys clobbered):
-		// one-time password bootstrap installs the public key, append-only
-		pw, perr := promptPassword(s.cfg.SSHUser, s.cfg.Host)
+		// one-time password bootstrap installs the public key, append-only.
+		// Chain: password on the main port -> firmware ssh+SFTP (port 22,
+		// KeeneticOS admin user, e.g. temp) — works even when the Entware
+		// keys file is clobbered/missing.
+		pw, perr := promptPassword("администратор", s.cfg.Host)
 		if perr != nil {
 			return fmt.Errorf("ssh %s@%s: %w; bootstrap недоступен: %v", s.cfg.SSHUser, addr, err, perr)
 		}
-		if ierr := installPubKey(s.cfg, signer, pw); ierr != nil {
+		pub := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+		fmt.Println("  → bootstrap: установка ssh-ключа на роутер (одноразовый пароль)")
+		var ierr error
+		if ierr = installPubKey(s.cfg, signer, pw); ierr != nil {
+			admin := strings.TrimSpace(os.Getenv("KGATE_SSH_ADMIN"))
+			if admin == "" {
+				admin = "temp"
+			}
+			ierr = installPubKeyViaFirmwareSftp(s.cfg, admin, pw, pub)
+		}
+		if ierr != nil {
 			return fmt.Errorf("ssh bootstrap (установка ключа): %w", ierr)
 		}
-		fmt.Println("  [OK] ssh-ключ установлен на роутер (bootstrap по одноразовому паролю)")
+		fmt.Println("  [OK] ssh-ключ установлен на роутер")
 		client, err = dial()
 	}
 	if err != nil {
