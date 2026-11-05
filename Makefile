@@ -55,6 +55,17 @@ ipk: release-binaries build/sing-box
 install-cli: build
 	@mkdir -p ~/.local/bin && cp kgate ~/.local/bin/ && echo "установлен: ~/.local/bin/kgate"
 
+# --- release-pipeline verify gates (make verify/lint/test/security) ----------
+verify: ## compile all packages
+	go build ./...
+lint: ## gofmt + go vet
+	@out=$$(gofmt -l . 2>/dev/null); if [ -n "$$out" ]; then echo "gofmt needed: $$out"; exit 1; fi
+	go vet ./...
+test: ## go test ./... (no test files yet — prints 'no test files', exits 0)
+	go test ./...
+security: ## govulncheck (fails loudly if the tool is missing)
+	@command -v govulncheck >/dev/null 2>&1 && govulncheck ./... || { echo "install govulncheck: go install golang.org/x/vuln/cmd/govulncheck@latest"; exit 1; }
+
 clean:
 	rm -rf build dist internal/deploy/payload.tgz kgate
 

@@ -14,15 +14,15 @@ import (
 type Config struct {
 	Host     string `yaml:"host"`      // router address (client/deployer)
 	ServerIP string `yaml:"server_ip"` // hy2 exit server IP (used for the ndm route pin)
-	SSHPort int    `yaml:"ssh_port"` // ssh used by the deployer
-	SSHUser string `yaml:"ssh_user"`
-	SSHKey  string `yaml:"ssh_key"`
+	SSHPort  int    `yaml:"ssh_port"`  // ssh used by the deployer
+	SSHUser  string `yaml:"ssh_user"`
+	SSHKey   string `yaml:"ssh_key"`
 
 	API struct {
-		Port  int    `yaml:"port"`  // daemon mTLS API port on the router
-		CA    string `yaml:"ca"`    // local client cert paths
-		Cert  string `yaml:"cert"`
-		Key   string `yaml:"key"`
+		Port int    `yaml:"port"` // daemon mTLS API port on the router
+		CA   string `yaml:"ca"`   // local client cert paths
+		Cert string `yaml:"cert"`
+		Key  string `yaml:"key"`
 	} `yaml:"api"`
 
 	Daemon struct {

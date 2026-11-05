@@ -2,8 +2,8 @@
 // the mTLS API. It replaces the legacy glue (S99sing-box, rc-redirect v5,
 // rc-redirect-watchdog, boot-autoup). Runs on the router as root
 // (iptables/ndmc). Every supervisor tick:
-//   1. make sure sing-box is alive (restart with backoff, inherited RLIMIT_NOFILE)
-//   2. make sure the SBREDIRECT DNS chain survives in nat (ndm likes to wipe it)
+//  1. make sure sing-box is alive (restart with backoff, inherited RLIMIT_NOFILE)
+//  2. make sure the SBREDIRECT DNS chain survives in nat (ndm likes to wipe it)
 package daemon
 
 import (
@@ -20,16 +20,16 @@ import (
 	"syscall"
 	"time"
 
-	"kgate/internal/model"
 	"golang.org/x/sys/unix"
+	"kgate/internal/model"
 )
 
 type Daemon struct {
-	cfg     *model.Config
-	mgr     *procManager
+	cfg      *model.Config
+	mgr      *procManager
 	lastIPOK bool
-	upOnce  bool
-	cfgWarn bool // template placeholders detected: do not auto-raise a dead tunnel
+	upOnce   bool
+	cfgWarn  bool // template placeholders detected: do not auto-raise a dead tunnel
 }
 
 func New(cfg *model.Config) *Daemon {
@@ -159,7 +159,6 @@ func (m *procManager) start(p *proc) error {
 	p.backoff = 0
 	return os.WriteFile(p.pidfile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 }
-
 
 func (m *procManager) killAll() {
 	// via ps (busybox killall is unreliable for these names)
@@ -297,7 +296,9 @@ func boolStr(b bool) string {
 	return "DEAD"
 }
 
-func (d *Daemon) clashEndpoints() []string { return []string{"http://127.0.0.1:9090", "http://192.168.1.1:9090"} }
+func (d *Daemon) clashEndpoints() []string {
+	return []string{"http://127.0.0.1:9090", "http://192.168.1.1:9090"}
+}
 
 func (d *Daemon) clashMode() string {
 	for _, ep := range d.clashEndpoints() {
@@ -428,7 +429,9 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 		json.NewEncoder(w).Encode(d.status())
 	})
 	mux.HandleFunc("/api/v1/toggle", func(w http.ResponseWriter, r *http.Request) {
-		var in struct{ State string `json:"state"` }
+		var in struct {
+			State string `json:"state"`
+		}
 		json.NewDecoder(r.Body).Decode(&in)
 		if in.State != "on" && in.State != "off" {
 			http.Error(w, "state: on|off", 400)
@@ -440,7 +443,9 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 		json.NewEncoder(w).Encode(map[string]string{"ndmc": out, "proxy0": d.proxyState()})
 	})
 	mux.HandleFunc("/api/v1/ruexit", func(w http.ResponseWriter, r *http.Request) {
-		var in struct{ Mode string `json:"mode"` }
+		var in struct {
+			Mode string `json:"mode"`
+		}
 		json.NewDecoder(r.Body).Decode(&in)
 		if in.Mode != "global" && in.Mode != "rule" {
 			http.Error(w, "mode: global|rule", 400)

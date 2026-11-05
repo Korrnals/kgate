@@ -1,9 +1,9 @@
 package main
 
 import (
-	"time"
 	"fmt"
 	"os"
+	"time"
 
 	"kgate/internal/certs"
 	"kgate/internal/client"
@@ -112,7 +112,7 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error { client.Verify(load()); return nil }})
 	toggle := &cobra.Command{Use: "toggle <on|off>", Args: cobra.ExactArgs(1),
 		Short: "тумблер HYST VPN",
-		RunE: func(cmd *cobra.Command, args []string) error { client.Toggle(load(), args[0]); return nil }}
+		RunE:  func(cmd *cobra.Command, args []string) error { client.Toggle(load(), args[0]); return nil }}
 	root.AddCommand(toggle)
 	ruexit := &cobra.Command{Use: "ruexit <on|off>", Args: cobra.ExactArgs(1),
 		Short: "RU-анонимизация (global/rule; нужен серверный RU-rule)",
