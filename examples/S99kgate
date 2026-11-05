@@ -6,6 +6,10 @@ PIDFILE=/opt/var/run/kgate.pid
 case "$1" in
   start)
     if [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ]; then echo "kgate already running"; exit 0; fi
+    # stray sweep: a stale pidfile can leave an orphan daemon double-supervising
+    # the stack (two relays/APIs fighting over the same ports)
+    killall kgate 2>/dev/null
+    sleep 1
     $DAEMON serve -c $CFG >> /opt/var/log/kgate-boot.log 2>&1 &
     echo $! > $PIDFILE
     echo "kgate daemon started"
