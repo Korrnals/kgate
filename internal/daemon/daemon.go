@@ -29,10 +29,35 @@ type Daemon struct {
 	mgr     *procManager
 	lastIPOK bool
 	upOnce  bool
+	cfgWarn bool // template placeholders detected: do not auto-raise a dead tunnel
 }
 
 func New(cfg *model.Config) *Daemon {
 	return &Daemon{cfg: cfg, mgr: newProcManager(cfg)}
+}
+
+// warnPlaceholders fails loud on un-edited template configs: the packaged
+// examples carry placeholder credentials, and a daemon silently supervising a
+// placeholder sing-box looks healthy (Proxy0 up) while no traffic moves.
+func (d *Daemon) warnPlaceholders(logger func(string)) {
+	b, err := os.ReadFile(d.cfg.Daemon.SingBoxConfig)
+	if err != nil {
+		return // missing config is reported elsewhere; do not duplicate
+	}
+	var hits []string
+	for _, m := range []string{"HY2_PASSWORD", "hy2.example.com"} {
+		if strings.Contains(string(b), m) {
+			hits = append(hits, m)
+		}
+	}
+	if len(hits) == 0 {
+		return
+	}
+	d.cfgWarn = true
+	_ = d.toggle("down") // a stale raised Proxy0 would blackhole the whole LAN
+	logger("КОНФИГ НЕ НАСТРОЕН: " + d.cfg.Daemon.SingBoxConfig +
+		" содержит плейсхолдеры (" + strings.Join(hits, ", ") + ") — туннель работать НЕ будет.")
+	logger("Замени server/password реальными значениями, затем: /opt/etc/init.d/S99kgate restart")
 }
 
 // ---- shell wrappers ----
@@ -329,6 +354,7 @@ func (d *Daemon) Run() error {
 
 	// once at startup: clear foreign processes and take ownership of the stack
 	d.mgr.killAll()
+	d.warnPlaceholders(logger)
 	logger("supervisor: принял стек (sing-box + xray)")
 	d.mgr.ensure()
 	d.iptablesApply()
@@ -345,6 +371,10 @@ func (d *Daemon) Run() error {
 		}
 		delay := model.Dur(d.cfg.Daemon.AutoupDelay, 25*time.Second)
 		time.Sleep(delay)
+		if d.cfgWarn {
+			logger("autoup: пропущен — конфиг не настроен (шаблон с плейсхолдерами), Proxy0 не трогаю")
+			return
+		}
 		if d.waitPort("127.0.0.1:1080", 60*time.Second) {
 			d.toggle("up")
 			logger("autoup: Proxy0 up (tunnel engine готов)")

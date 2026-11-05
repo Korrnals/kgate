@@ -11,6 +11,9 @@ case "$1" in
     echo "kgate daemon started"
     ;;
   stop)
+    # Stopping the supervisor must always restore direct connectivity: a stale
+    # up Proxy0 with a dead upstream blackholes the whole LAN
+    ndmc -c "interface Proxy0 down" >/dev/null 2>&1
     [ -f $PIDFILE ] && kill $(cat $PIDFILE) 2>/dev/null; rm -f $PIDFILE
     killall kgate 2>/dev/null
     echo "kgate stopped" ;;

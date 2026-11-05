@@ -8,6 +8,39 @@ follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.1.2] - 2026-11-05
+
+Repository consolidation and install-hardening release: the project
+repository goes public with the feed merged in, the ipk no longer
+clobbers live configs, and the daemon fails loud on un-edited template
+configs.
+
+### Fixed
+- ipk: tar members are built with `--format=ustar` — Entware `opkg`
+  aborted with heap corruption ("free(): invalid next size") on
+  GNU-format tars; installation now completes cleanly (verified on
+  Netcraze Ultra).
+- ipk: the package no longer ships live configs as conffiles. Templates
+  are installed as `*.example` and `postinst` seeds real configs only
+  if missing, so remove/reinstall can no longer destroy edited configs
+  (the root cause of a dead-tunnel incident where Proxy0 was up but
+  sing-box pointed at `HY2_PASSWORD` placeholders).
+- ipk: init script and ndm script are required and verified non-empty
+  at build time (a legacy empty `deploy/S99kgate` placeholder could
+  ship a broken package silently).
+- daemon: fails loud at startup when the sing-box config still contains
+  template placeholders (`HY2_PASSWORD`, `hy2.example.com`) — the stack
+  previously looked healthy (Proxy0 up) while the tunnel was unusable.
+
+### Changed
+- ipk is self-sufficient: ships the pinned sing-box engine, the ndm
+  config script and the RU-split rulesets (previous feed artifact
+  carried the kgate binary only).
+- The opkg feed moved into this repository (gh-pages branch); the
+  separate `kgate-feed` repository is retired.
+- Vendored rulesets under `examples/etc/sing-box/rulesets/` so clean
+  checkouts (release pipeline) build complete packages.
+
 ## [1.1.1] - 2026-11-04
 
 Feed and packaging release: an opkg package feed for `opkg`-native

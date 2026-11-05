@@ -2,7 +2,8 @@
 # kgate installer — downloads the latest CLI binary from GitHub Releases.
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Korrnals/kgate/main/scripts/install.sh | sh
-# For a PRIVATE repository export GITHUB_TOKEN with repo scope first.
+# For rate-limited environments export GITHUB_TOKEN (optional; the repository
+# is public — anonymous downloads work).
 set -eu
 
 REPO="Korrnals/kgate"
