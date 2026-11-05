@@ -1,9 +1,23 @@
 # Администрирование · Обновление, релизы, откат
 
-## ⬆️ Обновление на новую версию
+## ⬆️ Обновление через opkg-фид (роутер)
+
+```sh
+opkg update && opkg upgrade kgate
+/opt/etc/init.d/S99kgate status
+```
+
+> [!CAUTION]
+> Перед пакетными операциями — **бэкап конфигов**. Пакеты **≤ 1.1.1**
+> содержали конфиги как conffiles: переустановка той же версии могла заменить
+> отредактированные конфиги шаблонами. В ipk **≥ 1.1.2** конфигов в пакете
+> нет вовсе (`postinst` создаёт их из `.example` только при первом запуске),
+> но правило бэкапа — всегда первое. Подробности — [install.md](install.md).
+
+## ⬆️ Обновление деплойером (ноутбук)
 
 ```bash
-cd <repo> && git pull && make build
+git pull && make build             # в каталоге клона репозитория
 ./kgate apply -c kgate.yaml        # идемпотентно; миграции выполняются автоматически
 ./kgate verify
 ```
@@ -16,7 +30,7 @@ cd <repo> && git pull && make build
 |---|---|
 | `kgate-<ver>-linux-arm64` | демон/клиент на роутере |
 | `kgate-<ver>-linux-amd64` | CLI оператора |
-| `kgate_<ver>-1_aarch64-3.10.ipk` | установка через `opkg install` |
+| `kgate_<ver>-1_aarch64-3.10.ipk` | установка через `opkg install`; с 1.1.2 самодостаточен: `kgate` + `sing-box` + `ndm-commands.sh` + rulesets |
 | `SHA256SUMS` + `.sig`/`.bundle`/`.asc` | подписи (cosign + GPG) |
 
 ## 🔏 Верификация подписей (потребитель)
@@ -36,6 +50,10 @@ sha256sum -c --ignore-missing SHA256SUMS
 ```bash
 git checkout vX.Y.Z && make build && ./kgate apply -c kgate.yaml
 ```
+
+Для пакетной установки — скачайте артефакт нужной версии (например,
+`kgate_1.1.1-1_aarch64-3.10.ipk`) и поставьте его:
+`opkg install ./kgate_1.1.1-1_aarch64-3.10.ipk`.
 
 Аварийное отключение VPN без отката кода — тумблер Proxy0 off (`kgate toggle off`).
 

@@ -12,3 +12,4 @@ local/
 # служебное
 *.log
 dist/
+/feed/

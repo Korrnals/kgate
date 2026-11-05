@@ -5,6 +5,17 @@
 
 ## 🟠 Сценарий А — убрать только VPN-стек kgate
 
+Для пакетной установки (Пути A/B из [install.md](install.md)):
+
+```bash
+ssh router '
+opkg remove kgate                        # снимет и sing-box: с 1.1.2 движок входит в пакет
+rm -rf /opt/etc/kgate /opt/etc/sing-box  # живые конфиги пакету не принадлежат — сносим руками
+'
+```
+
+Для ручной раскладки (Путь B без opkg):
+
 ```bash
 ssh router '
 /opt/etc/init.d/S99kgate stop
@@ -15,13 +26,15 @@ rm -rf /opt/var/log/kgate*.log
 '
 ```
 
-Останется: sing-box бинарь/конфиги, sshd, Entware — движок без супервизора
-и без правил DNS (трафик пойдёт напрямую).
+Останется: sshd и Entware (при пакетном удалении); при ручном варианте —
+ещё и sing-box бинарь/конфиги: движок без супервизора и без правил DNS
+(трафик пойдёт напрямую).
 
 ## 🔴 Сценарий Б — полное очищение стека (kgate + sing-box + правила)
 
 ```bash
 ssh router '
+opkg remove kgate 2>/dev/null            # если ставился пакетом (≥ 1.1.2 снимет и sing-box)
 /opt/etc/init.d/S99kgate stop
 rm -f  /opt/etc/init.d/S99kgate /opt/etc/init.d/S99kgate.disabled
 rm -f  /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled

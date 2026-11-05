@@ -9,6 +9,20 @@ kgate logs        # хвост логов демона
 kgate reboot      # перезагрузка роутера
 ```
 
+## 🛑 Остановка и прямой доступ
+
+`/opt/etc/init.d/S99kgate stop` **всегда опускает Proxy0** до остановки
+демона: дом остаётся на прямом доступе провайдера. Остановка безопасна —
+«зависшего» туннеля с мёртвым upstream, который глушил бы всю LAN, не
+останется.
+
+```sh
+/opt/etc/init.d/S99kgate stop     # Proxy0 down + демон остановлен
+/opt/etc/init.d/S99kgate start    # демон; туннель поднимется через ~25 с (boot_autoup)
+```
+
+Точечное переключение без остановки супервизора — `kgate toggle on|off`.
+
 ## ⏱ Что делает демон на тике (15 с)
 
 1. sing-box жив? → нет: рестарт с бэкоффом (5→30 с), `RLIMIT_NOFILE` наследуется.
@@ -26,6 +40,24 @@ ndm↔Entware исключена.
 Мигания чекера ndm («lost/detected») — косметика: интерфейс держится,
 маршрут не меняется.
 
+## 💾 Бэкап и восстановление конфигов
+
+```bash
+# бэкап (с ноутбука)
+ssh root@192.168.1.1 'tar -czf /tmp/kgate-etc.tgz /opt/etc/kgate /opt/etc/sing-box'
+scp root@192.168.1.1:/tmp/kgate-etc.tgz .
+
+# восстановление
+scp kgate-etc.tgz root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 'tar -xzf /tmp/kgate-etc.tgz -C / && /opt/etc/init.d/S99kgate restart'
+```
+
+Что защищаем: `/opt/etc/kgate/kgate.yaml`, `/opt/etc/sing-box/config.json`,
+сертификаты (`web_root`). Снимайте копию перед любой пакетной операцией —
+правило и ловушки старых пакетов описаны в [install.md](install.md)
+(«Обновление»). Живые конфиги не принадлежат пакету ≥ 1.1.2 — `opkg remove`
+их не удаляет, поэтому бэкап + ручная зачистка — стандартная пара.
+
 ## 🩺 Типовые неисправности
 
 | 🔴 Симптом | 🟡 Причина | 🟢 Действие |
@@ -36,6 +68,20 @@ ndm↔Entware исключена.
 | DNS не резолвит | снесены DNS-правила | сторож вернёт ≤15 с; вручную `S99kgate`-цикл или `ndmc` |
 | sing-box не стартует после правок | невалидный конфиг / усечённый бинарь | `sing-box check -c`; размер бинаря (`ls -la`) |
 | relay паникует | зонд с некорректным телом | изолировано `recover()` — демон продолжает работу |
+
+## 🩻 Диагностика по boot-логу
+
+Файл: `/opt/var/log/kgate-boot.log` (stdout/stderr демона, перенаправляет
+`S99kgate`). Ключевые строки:
+
+| Строка в логе | Что значит | Действие |
+|---|---|---|
+| `КОНФИГ НЕ НАСТРОЕН: ... содержит плейсхолдеры (HY2_PASSWORD, hy2.example.com)` | в конфиге sing-box остались шаблонные значения | заполнить `server`/`password` ([configuration.md](configuration.md)) → `S99kgate restart` |
+| `autoup: пропущен — конфиг не настроен (шаблон с плейсхолдерами), Proxy0 не трогаю` | автоподъём намеренно пропущен: туннель на плейсхолдерах не поднимается | заполнить конфиг, рестарт |
+| `autoup: Proxy0 up (tunnel engine готов)` | движок готов, туннель включён — норма | ничего |
+| `autoup: sing-box не поднялся за 60с — Proxy0 не трогаю` | движок не стартовал за 60 с | `tail /opt/var/log/singbox.log`, `sing-box check -c /opt/etc/sing-box/config.json` |
+
+Хвост обоих логов одной командой — `kgate logs` (через mTLS).
 
 ## 🧰 Инструментальные нюансы Entware / ndm
 
@@ -50,6 +96,7 @@ ndm↔Entware исключена.
 
 ## 👉 См. также
 
+- [install.md](install.md) — установка и обновление, бэкап перед пакетными операциями
 - [segments-and-policies.md](segments-and-policies.md) — главный источник «тумблер ON, а трафик прямой»
 - [api/endpoints-status-verify.md](../api/endpoints-status-verify.md) — то же через mTLS API
 - [releases.md](releases.md) — если неисправность пережила обновление

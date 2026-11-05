@@ -5,7 +5,7 @@
 **KGATE** — единая утилита для VPN-стека на роутерах **Netcraze / Keenetic**:
 демон-супервизор на роутере + mTLS-клиент + деплойер «с нуля до рабочего состояния».
 
-[![release](https://img.shields.io/badge/release-v1.1.1-4fc3f7)](https://github.com/Korrnals/kgate/releases)
+[![release](https://img.shields.io/badge/release-v1.1.2-4fc3f7)](https://github.com/Korrnals/kgate/releases)
 [![platform](https://img.shields.io/badge/platform-Netcraze%20%2F%20Keenetic-7c8cff)](#поддерживаемые-роутеры)
 [![arch](https://img.shields.io/badge/arch-aarch64%20%7C%20amd64-9fc0e8)](#артефакты)
 [![api](https://img.shields.io/badge/API-mTLS%20%3A9443-2e7d32)](docs/api/authentication.md)
@@ -26,20 +26,24 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/kgate/main/scripts/install
 ```
 
 > [!NOTE]
-> Репозиторий приватный — экспортируйте `GITHUB_TOKEN` с доступом к репо,
-> либо соберите `kgate` из исходников (`make build`).
+> Репозиторий и релизы публичные — токены не нужны. Скрипт кладёт CLI в
+> `~/.local/bin` и шаблон конфига в `~/.kgate/`.
 
-### Вариант 2 · Entware-пакет на роутере
+### Вариант 2 · opkg-фид на роутере (рекомендуемый)
 
-```bash
-make ipk                                            # сборка пакета
-scp dist/kgate_*_aarch64-3.10.ipk root@192.168.1.1:/tmp/
-ssh root@192.168.1.1 'opkg install /tmp/kgate_*.ipk'
+```sh
+opkg install wget-ssl libustream-ssl uclient-fetch   # SSL-транспорт для opkg
+echo "src/gz kgate https://korrnals.github.io/kgate/" >> /opt/etc/opkg.conf
+opkg update && opkg install kgate
 ```
+
+Конфиги и старт — [docs/admin/install.md](docs/admin/install.md); подготовка
+роутера и носителя — [docs/admin/preparation.md](docs/admin/preparation.md).
 
 ### Вариант 3 · полный стек с нуля (деплойер)
 
 ```bash
+git clone https://github.com/Korrnals/kgate.git && cd kgate
 cp examples/kgate.yaml.example kgate.yaml           # host / ssh-ключ
 mkdir -p local/etc/sing-box/rulesets local/etc/ssh  # реальные конфиги и ключи
 make build && ./kgate apply -c kgate.yaml
@@ -59,12 +63,13 @@ docs/
 │   └── data-model.md                — конфиг-модель, payload, объекты API
 │
 ├── 🛠 admin/                        — администрирование
-│   ├── install.md                   — установка с нуля (стадии apply)
+│   ├── preparation.md               — 🧰 подготовка роутера и носителя Entware
+│   ├── install.md                   — установка: фид / вручную / деплойер
 │   ├── configuration.md             — kgate.yaml + критичные поля sing-box
 │   ├── segments-and-policies.md     — ⚠️ сегменты ndm: грабли №1
 │   ├── operations.md                — эксплуатация и диагностика
 │   ├── releases.md                  — обновление, откат, верификация подписей
-│   ├── opkg-feed.md                 — 📦 публикация и установка через opkg
+│   ├── opkg-feed.md                 — 📦 opkg-фид: подключение и публикация
 │   └── uninstall.md                 — 🔴 удаление и очищение
 │
 ├── 👤 user/                         — пользователю
@@ -87,6 +92,7 @@ docs/
 | Хочу… | Открой |
 |---|---|
 | понять, как устроено | [architecture/overview](docs/architecture/overview.md) → [components](docs/architecture/components.md) |
+| подготовить роутер к установке | [admin/preparation](docs/admin/preparation.md) |
 | установить/обновить | [admin/install](docs/admin/install.md) → [admin/releases](docs/admin/releases.md) |
 | настроить конфиги | [admin/configuration](docs/admin/configuration.md) |
 | разобраться, «почему трафик прямой» | [admin/segments-and-policies](docs/admin/segments-and-policies.md) |
@@ -137,6 +143,28 @@ make ipk               # Entware .ipk
 make install-cli       # CLI в ~/.local/bin
 ```
 
+## 🗂 Структура репозитория
+
+```
+├── internal/                  — исходники Go (демон, клиент, деплойер, конфиг)
+├── main.go                    — единая точка входа (serve + client + deployer)
+├── scripts/
+│   ├── build-ipk.sh           — сборка самодостаточного Entware .ipk
+│   ├── build-feed.sh          — индекс opkg-фида (Packages / Packages.gz)
+│   └── install.sh             — one-liner установка CLI с ноутбука
+├── examples/                  — вендоренные материалы для пакета:
+│   ├── S99kgate               — init-скрипт демона
+│   ├── ndm-commands.sh        — ndm-конфигурация (Proxy0, pins, DNS, политики)
+│   ├── kgate.yaml.example     — шаблон kgate.yaml
+│   └── etc/sing-box/          — config.json + rulesets/*.srs (входят в ipk)
+├── docs/                      — документация (дерево выше)
+├── local/                     — реальные материалы стека (gitignored)
+└── dist/, build/              — артефакты сборки
+```
+
+Легаси-каталога `deploy/` больше нет: единственный источник init- и
+ndm-скриптов — `examples/` (проверяется на этапе сборки ipk).
+
 ## Безопасность
 
 - mTLS: клиентский сертификат обязателен; ключи сервера — только на роутере
@@ -147,5 +175,4 @@ make install-cli       # CLI в ~/.local/bin
 ## Roadmap
 
 - [ ] адаптеры платформ: OpenWrt (nftables/uci)
-- [ ] opkg-фид для `opkg install kgate`
 - [ ] веб-мини-панель демона

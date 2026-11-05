@@ -15,6 +15,25 @@
 > Секретов в `kgate.yaml` нет. Секреты hy2 живут в `sing-box` конфиге
 > (`local/etc/sing-box/config.json` → payload → `/opt/etc/sing-box/config.json`).
 
+## 🏗 Шаблоны и плейсхолдеры
+
+Пакет создаёт живые конфиги из шаблонов `.example` (это делает `postinst`
+при первом запуске — правки не затираются при переустановке). Шаблоны
+содержат маркерные значения — **плейсхолдеры**:
+
+| Плейсхолдер | Файл | Поле | Заменить на |
+|---|---|---|---|
+| `203.0.113.10` | `/opt/etc/kgate/kgate.yaml` | `server_ip` | реальный IP exit-сервера |
+| `hy2.example.com` | `/opt/etc/sing-box/config.json` | `outbounds[hy2-out].server`, `tls.server_name` | хост вашего hysteria2-сервера |
+| `HY2_PASSWORD` | `/opt/etc/sing-box/config.json` | `password`, `obfs.password` | пароль вашего hysteria2-сервера |
+
+Демон при старте сканирует sing-box конфиг на `HY2_PASSWORD` и
+`hy2.example.com`. Если находит — пишет в boot-лог **«КОНФИГ НЕ НАСТРОЕН»**,
+опускает Proxy0 и пропускает автоподъём: заведомо мёртвый туннель не
+поднимается, интернет дома остаётся прямым. Реальные значения — параметры
+вашего hysteria2-сервера; после замены выполните
+`/opt/etc/init.d/S99kgate restart` (шаги — [install.md](install.md)).
+
 ## ⚙️ Конфиг sing-box — критичные для kgate поля
 
 | Поле | Зачем | Слом при ошибке |
@@ -28,9 +47,11 @@
 
 ## 🗂 Rulesets
 
-Локальные rule-sets (`.srs`) кладутся в `/opt/etc/sing-box/rulesets/`.
-При сборке payload Makefile копирует их из `local/etc/sing-box/rulesets/`
-(или скачивает при сборке .ipk — если источник доступен).
+Локальные rule-sets (`.srs`) живут в `/opt/etc/sing-box/rulesets/`. С версии
+1.1.2 набор **вендорен** в репозитории (`examples/etc/sing-box/rulesets/`) и
+входит в `.ipk` самодостаточно — скачивать правила при установке не нужно.
+При собственной payload-сборке из `local/` ваши наборы копируются из
+`local/etc/sing-box/rulesets/`.
 
 ## 🛡 mTLS-сертификаты
 
@@ -54,10 +75,11 @@
 - [architecture/data-model.md](../architecture/data-model.md) — полная модель конфига и payload
 - [api/authentication.md](../api/authentication.md) — сертификаты в действии
 
-## Переменные окружения (поверх yaml)
+## 🔧 Переменные окружения (поверх yaml)
 
 Приоритет: **env `KGATE_*` > yaml > дефолты**. Удобно для контейнеров/сервисов,
-когда не хочется править файл.
+когда не хочется править файл. Список зеркалит yaml-пути и читается из
+`internal/model/config.go`.
 
 | Переменная | Поле |
 |---|---|

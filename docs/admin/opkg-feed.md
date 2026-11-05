@@ -1,41 +1,51 @@
-# Администрирование · opkg-фид (публикация и установка)
+# Администрирование · opkg-фид (подключение и публикация)
 
-## Публикация фида
+## 📦 Подключение фида на роутере
 
-```bash
-make ipk                       # собирает dist/kgate_<ver>_<arch>.ipk
-scripts/build-feed.sh dist feed   # генерирует feed/{Packages, Packages.gz, *.ipk}
-```
+Фид публикуется в gh-pages **этого** репозитория:
+`https://korrnals.github.io/kgate/`.
 
-Содержимое `feed/` публикуется на любой HTTP-хостинг:
-
-- **gh-pages публичного фид-репо** (например, `Korrnals/kgate-feed`):
-  ветка `gh-pages` → `https://<owner>.github.io/kgate-feed/`
-- **свой веб-серер** / любой static-hosting с HTTPS
-
-Индекс (`Packages`) генерируется в формате opkg: стanza
-`Package/Version/Architecture/Filename/SHA256sum/Size/Description` на пакет,
-рядом лежат сами `.ipk` и gzip'нутый `Packages.gz`.
-
-## Подключение на роутере
-
-```bash
-opkg update
-# один раз: добавить фид в /opt/etc/opkg.conf (или /opt/etc/opkg/customfeeds.conf):
-echo 'src/gz kgate https://<host>/<путь>/' >> /opt/etc/opkg/customfeeds.conf
+```sh
+opkg install wget-ssl libustream-ssl uclient-fetch   # SSL-транспорт для opkg (фид по https)
+echo "src/gz kgate https://korrnals.github.io/kgate/" >> /opt/etc/opkg.conf
 opkg update
 opkg install kgate
 opkg upgrade kgate            # последующие обновления
 ```
 
-opkg сам проверит SHA256sum из индекса при скачивании.
+opkg проверит SHA256sum из индекса при скачивании. Что делает установщик и
+какие шаги следуют за ним — [install.md](install.md) (Путь A).
 
-## Замечания
+> [!NOTE]
+> Ранее фид жил в отдельном репозитории `kgate-feed` — он **выведен из
+> эксплуатации** и не обновляется. Старый URL `https://<owner>.github.io/kgate-feed/`
+> не используйте.
 
-- Приватный репозиторий: GitHub Pages для private-репо требует платного плана;
-  альтернативы — отдельный публичный фид-репо (в .ipk нет секретов) или свой хостинг.
-- Установка пакета не запускает демон автоматически: отредактируйте
-  `/opt/etc/kgate/kgate.yaml` и `/opt/etc/sing-box/config.json`, затем
-  `/opt/etc/init.d/S99kgate start` (см. [install.md](install.md)).
-- Полный стек «с нуля» (правила ndm, туннель, сертификаты) ставится деплойером:
-  `kgate apply` с ноутбука ([install.md](install.md)).
+## 🏗 Публикация фида (мейнтейнерам)
+
+```bash
+make ipk                          # собирает dist/kgate_<ver>-1_aarch64-3.10.ipk
+scripts/build-feed.sh dist feed   # генерирует feed/{Packages, Packages.gz, *.ipk}
+```
+
+Содержимое `feed/` публикуется в ветку `gh-pages` этого репозитория —
+github.io раздаёт её по HTTPS. Альтернатива — любой static-hosting: индекс
+`Packages` генерируется в формате opkg (stanza
+`Package/Version/Architecture/Filename/SHA256sum/Size/Description` на пакет),
+рядом лежат сами `.ipk` и gzip'нутый `Packages.gz`.
+
+## 🔎 Замечания
+
+- установка пакета **не запускает демон автоматически**: `postinst` создаёт
+  конфиги из шаблонов `.example` (только если их ещё нет) и печатает
+  подсказку; с шаблонными значениями демон стартует, но туннель намеренно не
+  поднимается (см. [configuration.md](configuration.md));
+- полный стек «с нуля» (ndm-правила, туннель, сертификаты) ставится
+  деплойером: `kgate apply` с ноутбука ([install.md](install.md), Путь C);
+- в `.ipk` секретов нет — пакет содержит бинари, скрипты, шаблоны и rulesets.
+
+## 👉 См. также
+
+- [install.md](install.md) — установка и обновление через фид
+- [releases.md](releases.md) — релизные артефакты и подписи
+- [preparation.md](preparation.md) — требования к роутеру и место на носителе

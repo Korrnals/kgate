@@ -1,5 +1,21 @@
 # Пользователь · Начало работы
 
+## 🚀 Быстрый старт (роутер, opkg-фид)
+
+Подготовка роутера — [preparation.md](../admin/preparation.md). Установка —
+четыре команды по ssh:
+
+```sh
+opkg install wget-ssl libustream-ssl uclient-fetch
+echo "src/gz kgate https://korrnals.github.io/kgate/" >> /opt/etc/opkg.conf
+opkg update
+opkg install kgate
+```
+
+Затем — заменить плейсхолдеры (`203.0.113.10`, `hy2.example.com`,
+`HY2_PASSWORD`) реальными значениями вашего hysteria2-сервера и запустить
+демона. Пошагово — [install.md](../admin/install.md).
+
 ## 🎁 Что вы получили
 
 После установки на роутере появился **один переключатель VPN для всего дома**:
@@ -42,6 +58,7 @@ kgate verify
 
 ## 👉 См. также
 
+- [install.md](../admin/install.md) — установка: фид, вручную или деплойером
 - [day-to-day.md](day-to-day.md) — повседневное управление
 - [ru-exit.md](ru-exit.md) — режим анонимизации поверх тумблера
 - [glossary.md](../glossary.md) — тумблер, туннель, движок
