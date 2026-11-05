@@ -1,20 +1,22 @@
 # Пользователь · Начало работы
 
-## 🚀 Быстрый старт (роутер, opkg-фид)
+## 🚀 Быстрый старт
 
-Подготовка роутера — [preparation.md](../admin/preparation.md). Установка —
-четыре команды по ssh:
+Ноутбук оператора — три команды (CLI → конфиг → деплой):
 
-```sh
-opkg install wget-ssl libustream-ssl uclient-fetch
-echo "src/gz kgate https://korrnals.github.io/kgate/" >> /opt/etc/opkg.conf
-opkg update
-opkg install kgate
+```bash
+curl -fsSL https://raw.githubusercontent.com/Korrnals/kgate/main/scripts/install.sh | sh
+kgate config create      # конфиг + редактор: host, server_ip, ssh_key
+kgate deploy
 ```
 
-Затем — заменить плейсхолдеры (`203.0.113.10`, `hy2.example.com`,
-`HY2_PASSWORD`) реальными значениями вашего hysteria2-сервера и запустить
-демона. Пошагово — [install.md](../admin/install.md).
+Пошагово — [install.md](../admin/install.md). Пакетный путь на роутер
+(opkg-фид) — [alternatives-install.md](../admin/alternatives-install.md);
+подготовка роутера — [preparation.md](../admin/preparation.md).
+
+После установки заменить плейсхолдеры (`203.0.113.10`, `hy2.example.com`,
+`HY2_PASSWORD`) реальными значениями вашего hysteria2-сервера — туннель
+поднимется сам.
 
 ## 🎁 Что вы получили
 

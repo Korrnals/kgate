@@ -1,6 +1,19 @@
 # Администрирование · Обновление, релизы, откат
 
-## ⬆️ Обновление через opkg-фид (роутер)
+## ⬆️ Обновление: `kgate update` (основной путь)
+
+На ноутбуке и на роутере — самобновление из GitHub Releases:
+
+```bash
+kgate update
+```
+
+Что делает: запрос Releases API → сравнение версий → скачивание архива для
+платформы → проверка sha256 по `checksums-sha256.txt` → атомарная замена
+бинарника (tmp + rename). На роутере дополнительно перезапускает `S99kgate` —
+туннель опустится на ~30-60 с и поднимется сам (boot_autoup).
+
+## ⬆️ Обновление пакетное (opkg-фид)
 
 ```sh
 opkg update && opkg upgrade kgate
@@ -14,41 +27,44 @@ opkg update && opkg upgrade kgate
 > нет вовсе (`postinst` создаёт их из `.example` только при первом запуске),
 > но правило бэкапа — всегда первое. Подробности — [install.md](install.md).
 
-## ⬆️ Обновление деплойером (ноутбук)
+## ⬆️ Обновление из исходников (ноутбук)
 
 ```bash
 git pull && make build             # в каталоге клона репозитория
-./kgate apply -c kgate.yaml        # идемпотентно; миграции выполняются автоматически
+./kgate deploy                     # идемпотентно; миграции выполняются автоматически
 ./kgate verify
 ```
 
-Точечные стадии: `./kgate apply --only files|config|ndm|services`.
+Точечные стадии: `./kgate deploy --only files|config|ndm|services`.
 
 ## 📦 Релизные артефакты
 
 | Артефакт | Для чего |
 |---|---|
-| `kgate-<ver>-linux-arm64` | демон/клиент на роутере |
-| `kgate-<ver>-linux-amd64` | CLI оператора |
-| `kgate_<ver>-1_aarch64-3.10.ipk` | установка через `opkg install`; с 1.1.2 самодостаточен: `kgate` + `sing-box` + `ndm-commands.sh` + rulesets |
-| `SHA256SUMS` + `.sig`/`.bundle`/`.asc` | подписи (cosign + GPG) |
+| `kgate_<ver>_linux_arm64.tar.gz` | демон/клиент на роутере (внутри — бинарь `kgate`) |
+| `kgate_<ver>_linux_amd64.tar.gz` | CLI оператора |
+| `kgate_<ver>-1_aarch64-3.10.ipk` | установка через `opkg install`; самодостаточен: `kgate` + `sing-box` + `ndm-commands.sh` + rulesets + CA-пул |
+| `checksums-sha256.txt` + подписи | контрольные суммы; подписи cosign + GPG (`.sig`/`.bundle`/`.asc`) |
+
+С 1.2.0 релизы собираются goreleaser'ом (репо-конфиг `.goreleaser.yaml`);
+подписи — конвейером. `kgate update` отказывается ставить архив, чья sha256
+не сошлась с `checksums-sha256.txt`.
 
 ## 🔏 Верификация подписей (потребитель)
 
 ```bash
-curl -sSLO <release-url>/SHA256SUMS{,.sig,.bundle,.asc}
-# подпись + доказательство Rekor в одном bundle (cosign ≥ 2.x, bundle v0.3)
-cosign verify-blob --key cosign.pub --bundle SHA256SUMS.bundle SHA256SUMS
-# если cosign старше и не понимает bundle — по сырой подписи:
-cosign verify-blob --key cosign.pub --signature SHA256SUMS.sig SHA256SUMS
-gpg --import gpg-release.pub.asc && gpg --verify SHA256SUMS.asc SHA256SUMS
-sha256sum -c --ignore-missing SHA256SUMS
+curl -sSLO <release-url>/checksums-sha256.txt
+# подписи (файлы .sig/.bundle/.asc прикладываются конвейером к чексамму)
+cosign verify-blob --key cosign.pub --bundle checksums-sha256.txt.bundle checksums-sha256.txt
+gpg --import gpg-release.pub.asc && gpg --verify checksums-sha256.txt.asc checksums-sha256.txt
+# суммы самих артефактов:
+sha256sum -c --ignore-missing checksums-sha256.txt
 ```
 
 ## ⏪ Откат версии
 
 ```bash
-git checkout vX.Y.Z && make build && ./kgate apply -c kgate.yaml
+git checkout vX.Y.Z && make build && ./kgate deploy
 ```
 
 Для пакетной установки — скачайте артефакт нужной версии (например,

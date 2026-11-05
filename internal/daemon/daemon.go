@@ -76,11 +76,21 @@ func sh(script string) string {
 // stripped env at boot, making ndmc/grep inside status scripts behave
 // differently compared to a restart from an ssh session.
 func daemonEnv() []string {
-	return []string{
+	env := []string{
 		"PATH=/opt/bin:/opt/sbin:/opt/usr/bin:/opt/usr/sbin:/sbin:/usr/sbin:/bin:/usr/bin",
 		"HOME=/",
 		"TERM=linux",
 	}
+	// CA fallback: firmware normally ships /etc/ssl/certs (sing-box TLS to the
+	// hy2 server works out of the box). The ipk-shipped bundle covers firmware
+	// builds without a system cert dir; only set it then, so we never override
+	// fresher firmware roots with a stale bundle.
+	if _, err := os.Stat("/etc/ssl/certs"); err != nil {
+		if _, err := os.Stat("/opt/etc/kgate/ca-bundle.crt"); err == nil {
+			env = append(env, "SSL_CERT_FILE=/opt/etc/kgate/ca-bundle.crt")
+		}
+	}
+	return env
 }
 
 func (d *Daemon) ndmc(cmd string) string {

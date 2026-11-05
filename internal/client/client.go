@@ -2,14 +2,15 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -81,12 +82,44 @@ func Verify(c *model.Config) {
 	b, code := api(c, "GET", "/api/v1/verify", nil)
 	fmt.Println("=== verify daemon (mTLS", code, ") ===")
 	fmt.Println(pretty(b))
-	out, err := exec.Command("curl", "-sS", "--max-time", "12",
-		"--socks5-hostname", fmt.Sprintf("%s:1080", c.Host), "https://api.ipify.org").Output()
+	ip, err := socksFetchIP(c)
 	if err != nil {
 		fatal("локальный socks-тест: %v", err)
 	}
-	fmt.Printf("%-9s %s (ожидаем NL exit)\n", "socks:", strings.TrimSpace(string(out)))
+	fmt.Printf("%-9s %s (ожидаем NL exit)\n", "socks:", ip)
+}
+
+// socksFetchIP asks api.ipify.org through the router's SOCKS5 (port 1080)
+// and returns the exit IP — the pure-Go replacement of the curl battery.
+func socksFetchIP(c *model.Config) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	conn, err := socksConnect(ctx, fmt.Sprintf("%s:1080", c.Host), "api.ipify.org", 443)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	tlsConn := tls.Client(conn, &tls.Config{ServerName: "api.ipify.org", MinVersion: tls.VersionTLS12})
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		return "", fmt.Errorf("tls через туннель: %w", err)
+	}
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://api.ipify.org/", nil)
+	tr := &http.Transport{DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return tlsConn, nil // single-purpose client: the tunnelled conn is pre-established
+	}}
+	resp, err := (&http.Client{Timeout: 12 * time.Second, Transport: tr}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("api.ipify.org: HTTP %d", resp.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 func Toggle(c *model.Config, state string) {

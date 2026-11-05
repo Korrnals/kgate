@@ -15,29 +15,6 @@ import (
 //go:embed payload.tgz
 var Payload []byte
 
-// S99Routerctl is the daemon init script shipped in the payload.
-const S99Script = `#!/bin/sh
-# {kgate} VPN-stack supervisor daemon (replaces S99sing-box/watchdog/boot-autoup)
-DAEMON=/opt/sbin/kgate
-CFG=/opt/etc/kgate/kgate.yaml
-PIDFILE=/opt/var/run/kgate.pid
-case "$1" in
-  start)
-    if [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ]; then echo "kgate already running"; exit 0; fi
-    $DAEMON serve -c $CFG >> /opt/var/log/kgate-boot.log 2>&1 &
-    echo $! > $PIDFILE
-    echo "kgate daemon started"
-    ;;
-  stop)
-    [ -f $PIDFILE ] && kill $(cat $PIDFILE) 2>/dev/null; rm -f $PIDFILE
-    killall kgate 2>/dev/null
-    echo "kgate stopped" ;;
-  status)
-    [ -f $PIDFILE ] && [ -d /proc/$(cat $PIDFILE) ] && echo running || echo stopped ;;
-  *) echo "usage: $0 {start|stop|status}" ;;
-esac
-`
-
 type Runner struct {
 	c        *model.Config
 	dry      bool

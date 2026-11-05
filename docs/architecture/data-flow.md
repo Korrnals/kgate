@@ -48,7 +48,7 @@ sequenceDiagram
     C->>U: статус + верификация
 ```
 
-## 🚀 Поток деплоя (`kgate apply`)
+## 🚀 Поток деплоя (`kgate deploy`)
 
 ```mermaid
 sequenceDiagram

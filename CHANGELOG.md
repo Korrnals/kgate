@@ -8,6 +8,52 @@ follows [Semantic Versioning](https://semver.org/).
 
 Nothing yet.
 
+## [1.2.0] - 2026-11-05
+
+Onboarding and slimming release: the primary install path is now three
+commands on a laptop (CLI → `config create` → `deploy`), the binary
+can update itself from GitHub Releases, and the package drops the curl
+and ca-bundle dependencies.
+
+### Added
+- CLI: `kgate config create` — seeds `~/.kgate/kgate.yaml` from the
+  embedded template, opens `$VISUAL`/`$EDITOR`, warns on leftover
+  placeholders, prints the path; `config view|path|edit` round it out.
+  The default config path is `~/.kgate/kgate.yaml` (or `$KGATE_CONFIG`);
+  `./kgate.yaml` keeps working when present.
+- CLI: `kgate deploy` — the primary deploy verb (`apply` kept as an
+  alias); same idempotent stages, `--only`, `--dry-run`.
+- CLI: `kgate update` — self-update via the GitHub Releases API over
+  pure net/http (no curl): version compare, platform archive download,
+  sha256 verified against `checksums-sha256.txt`, atomic tmp+rename
+  replacement; on the router it also restarts `S99kgate` (tunnel
+  returns automatically in ~30-60 s).
+- ipk ships a CA pool at `/opt/etc/kgate/ca-bundle.crt` — a TLS fallback
+  for firmware builds without `/etc/ssl/certs`; the daemon exports
+  `SSL_CERT_FILE` for sing-box only when the system store is missing.
+
+### Changed
+- ipk `Depends` slimmed to `iptables, openssh-server`: curl is unused
+  (the verify socks-test is pure Go now) and the system CA store or the
+  shipped bundle replaces ca-bundle.
+- Binaries are built with `-s -w`: arm64 ~14.3 MB → ~10 MB, ipk
+  ~19 MB → ~15 MB.
+- iptables dependency audited and kept: on KeeneticOS 5.x (5.01.C) the
+  ndm DNS-redirect chains are empty and unmanaged via CLI, so the
+  SBREDIRECT DNS-DNAT remains the only client-DNS interception (needed
+  against provider DNS poisoning).
+- Docs restructured to a primary-vs-alternatives pattern:
+  `install.md` now documents only the recommended laptop path, opkg
+  feed and manual installs moved to `alternatives-install.md`; the same
+  split for uninstall (`alternatives-uninstall.md`).
+
+### Fixed
+- build: the empty payload placeholder is committed so `go build`
+  (verify/lint gates) works on a fresh checkout — `//go:embed` no
+  longer breaks CI from a clean clone.
+- removed the dead `S99Script` const from the deployer (the single
+  source of truth is `examples/S99kgate`).
+
 ## [1.1.2] - 2026-11-05
 
 Repository consolidation and install-hardening release: the project

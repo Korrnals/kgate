@@ -1,0 +1,94 @@
+# .goreleaser.yaml — kgate (release-pipeline go plugin contract).
+# The pipeline runs `goreleaser release --clean --skip=sign` and its core
+# signs/attaches artifacts matching *.tar.gz *.zip — so archives MUST be
+# .tar.gz (raw binaries would be published unsigned). The ipk is built by a
+# before-hook and attached via release.extra_files.
+version: 2
+
+project_name: kgate
+
+before:
+  hooks:
+    # pipeline-owned verify gates also run; keep the goreleaser-owned build gate
+    - make verify
+    # builds the ipk into .goreleaser-ipk/ (NOT dist/ — goreleaser owns dist
+    # and requires it empty before its own builds; the ipk is attached via
+    # release.extra_files)
+    - make -s ipk VERSION={{.Version}} DIST_DIR=.goreleaser-ipk IPK_DIR=.goreleaser-ipk
+
+builds:
+  - id: kgate
+    main: .
+    binary: kgate
+    env:
+      - CGO_ENABLED=0
+      # см. Makefile: единый тулчейн с чистым stdlib (runner держит 1.25.12)
+      - GOTOOLCHAIN=go1.27.3
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # -s -w: strip debug tables (~14.3MB -> ~10MB) — router storage is tight
+    ldflags:
+      - -s -w
+      - -X main.appVersion={{.Version}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: 'checksums-sha256.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+release:
+  github:
+    owner: Korrnals
+    name: kgate
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+  header: |
+    ## kgate v{{.Version}}
+
+    See [CHANGELOG.md](https://github.com/Korrnals/kgate/blob/main/CHANGELOG.md) for details.
+  extra_files:
+    - glob: .goreleaser-ipk/*.ipk
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^style:'
+      - 'Merge pull request'
+      - 'Merge branch'
+  groups:
+    - title: 'New features'
+      regexp: '^feat:'
+      order: 0
+    - title: 'Bug fixes'
+      regexp: '^fix:'
+      order: 1
+    - title: 'Refactoring'
+      regexp: '^refactor:'
+      order: 2
+    - title: 'Performance'
+      regexp: '^perf:'
+      order: 3
+    - title: 'Build / CI'
+      regexp: '^build:|^ci:'
+      order: 4
+    - title: 'Other'
+      order: 999

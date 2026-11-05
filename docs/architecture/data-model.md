@@ -50,9 +50,9 @@ daemon:                  # секция демона (роутер)
 
 | Объект | Где | Кто генерирует |
 |---|---|---|
-| `ca.crt` / `ca.key` | ноутбук (`~/.kgate/`) + `ca.crt` на роутере | `kgate apply` (ECDSA P-256, 10 лет) |
-| `server.crt` / `server.key` | роутер (`<web_root>/`) | `kgate apply`; SAN: IP роутера + `kgate` |
-| `client.crt` / `client.key` | ноутбук (`~/.kgate/`) | `kgate apply` |
+| `ca.crt` / `ca.key` | ноутбук (`~/.kgate/`) + `ca.crt` на роутере | `kgate deploy` (ECDSA P-256, 10 лет) |
+| `server.crt` / `server.key` | роутер (`<web_root>/`) | `kgate deploy`; SAN: IP роутера + `kgate` |
+| `client.crt` / `client.key` | ноутбук (`~/.kgate/`) | `kgate deploy` |
 
 ## 🔌 Объекты API
 

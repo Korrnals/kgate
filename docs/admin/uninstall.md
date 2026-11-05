@@ -1,76 +1,51 @@
-# Администрирование · Удаление и очищение
+# Администрирование · Удаление
 
 > 🔴 Все операции необратимы без бэкапа. Снимите копию `/opt/etc/`
 > перед началом: `ssh router 'tar -czf /tmp/opt-etc.tgz /opt/etc' && scp ...`
 
-## 🟠 Сценарий А — убрать только VPN-стек kgate
+## Основной путь · снять стек, поставленный `kgate deploy`
 
-Для пакетной установки (Пути A/B из [install.md](install.md)):
-
-```bash
-ssh router '
-opkg remove kgate                        # снимет и sing-box: с 1.1.2 движок входит в пакет
-rm -rf /opt/etc/kgate /opt/etc/sing-box  # живые конфиги пакету не принадлежат — сносим руками
-'
-```
-
-Для ручной раскладки (Путь B без opkg):
+Зеркало основного пути установки — на ноутбуке, одна ssh-сессия:
 
 ```bash
+kgate toggle off          # опустить туннель (трафик дома пойдёт напрямую)
 ssh router '
 /opt/etc/init.d/S99kgate stop
-rm -f /opt/etc/init.d/S99kgate
-rm -rf /opt/etc/kgate
-rm -f  /opt/sbin/kgate
-rm -rf /opt/var/log/kgate*.log
-'
-```
-
-Останется: sshd и Entware (при пакетном удалении); при ручном варианте —
-ещё и sing-box бинарь/конфиги: движок без супервизора и без правил DNS
-(трафик пойдёт напрямую).
-
-## 🔴 Сценарий Б — полное очищение стека (kgate + sing-box + правила)
-
-```bash
-ssh router '
-opkg remove kgate 2>/dev/null            # если ставился пакетом (≥ 1.1.2 снимет и sing-box)
-/opt/etc/init.d/S99kgate stop
-rm -f  /opt/etc/init.d/S99kgate /opt/etc/init.d/S99kgate.disabled
-rm -f  /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled
-rm -f  /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled
-rm -f  /opt/etc/init.d/S24xray /opt/etc/init.d/S24xray.disabled
-rm -rf /opt/etc/kgate /opt/etc/sing-box /opt/etc/ndm-commands.sh
+rm -f  /opt/etc/init.d/S99kgate /opt/etc/ndm-commands.sh
+rm -rf /opt/etc/kgate /opt/etc/sing-box
 rm -f  /opt/sbin/kgate /opt/sbin/sing-box
-rm -rf /opt/var/log/kgate*.log /opt/var/log/singbox.log
-killall sing-box kgate 2>/dev/null
-# ndm-конфигурация: снять пины и туннель
-ndmc -c "interface Proxy0 down"
-ndmc -c "no ip route <SERVER_IP> ISP"
-ndmc -c "no ip route <DNS_IP> ISP"
-'
+rm -f  /opt/var/log/kgate*.log /opt/var/log/singbox.log
+killall sing-box 2>/dev/null
+true'
 ```
 
-> [!CAUTION]
-> `no ip route` выполняйте с реальными значениями пинов (см. `show ip route`).
-> Сегментные политики и Proxy0-подключение удаляются в веб-интерфейсе
-> (Другие подключения / Приоритеты подключений).
-
-## 🕳 Восстановление заводского поведения DNS
+На роутере останутся: sshd, Entware и ndm-объекты (Proxy0, route-pin на
+`server_ip`). Пин снимается одной командой (значение — ваш exit-IP):
 
 ```bash
-ndmc -c "no ip name-server <DNS_IP>"   # если был настроен статический DNS
+ssh router 'ndmc -c "no ip route 203.0.113.10 ISP"'
 ```
 
-## ✅ Проверка после очищения
+Клиентская часть на ноутбуке:
 
 ```bash
-pidof sing-box kgate || echo "процессов нет"
-ssh router 'grep -c SBREDIRECT <(/opt/sbin/iptables -t nat -L -n)'   # 0 = правил нет
+rm -f ~/.local/bin/kgate
+rm -rf ~/.kgate           # конфиг + mTLS-сертификаты
 ```
+
+Проверка:
+
+```bash
+ssh router 'pidof sing-box kgate || echo "процессов нет"'
+```
+
+Сегментные политики и Proxy0 удаляются в веб-интерфейсе (Другие подключения /
+Приоритеты подключений).
 
 ## 👉 См. также
 
+- [alternatives-uninstall.md](alternatives-uninstall.md) — пакетное удаление
+  (opkg), полное очищение с legacy, восстановление заводского DNS
 - [install.md](install.md) — установить заново с нуля
 - [releases.md](releases.md) — откат версии вместо удаления
 - [glossary.md](../glossary.md) — route-pins, Proxy0, SBREDIRECT

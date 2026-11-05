@@ -1,7 +1,9 @@
 # сборка
 kgate
 build/
-internal/deploy/payload.tgz
+# payload.tgz: 45-байтовая пустая заглушка КОММИТИТСЯ (//go:embed требует
+# файл на свежем checkout, иначе verify/lint-гейты падают на чистой сборке);
+# реальные payload'ы генерит `make payload` и не коммитит.
 internal/deploy/payload-empty.tgz
 
 # реальные конфиги и материалы (секреты, ключи, rulesets)
@@ -13,3 +15,5 @@ local/
 *.log
 dist/
 /feed/
+# goreleaser ipk hook output
+.goreleaser-ipk/
