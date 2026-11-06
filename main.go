@@ -276,7 +276,10 @@ func main() {
 					client.Status(c)
 					client.Verify(c)
 				} else {
-					fmt.Println("туннель не поднялся за 90с — стек установлен; диагностика: kgate verify, kgate logs")
+					// wave-1 review MINOR-4: таймаут невидим для скриптов —
+					// стек установлен, но туннель не подтверждён → ненулевой exit
+					fmt.Println("туннель не поднялся за 90с — стек установлен, НО туннель НЕ подтверждён; диагностика: kgate verify, kgate logs")
+					os.Exit(1)
 				}
 			}
 			return nil
@@ -351,16 +354,32 @@ func main() {
 
 	homeDir, _ := os.UserHomeDir()
 	subStatePath := filepath.Join(homeDir, "subscribe.json")
-	readSubState := func() map[string]any {
+	// absent → (nil, nil); нечитаемый/битый → ошибка (не «не настроена»):
+	// тихий fallback на yaml-URL при битом состоянии — это wave-1 MINOR-3
+	readSubState := func() (map[string]any, error) {
 		b, err := os.ReadFile(subStatePath)
 		if err != nil {
-			return nil
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
 		}
 		var m map[string]any
 		if json.Unmarshal(b, &m) != nil {
-			return nil
+			return nil, fmt.Errorf("файл состояния %s не читается как JSON — разберитесь вручную или удалите его", subStatePath)
 		}
-		return m
+		return m, nil
+	}
+
+	// writeFileAtomic — temp+rename вместо truncate-then-write: параллельный
+	// deploy/краш посреди записи больше не видит обрезанный файл
+	// (wave-1 review MINOR-2).
+	writeFileAtomic := func(path string, data []byte, mode os.FileMode) error {
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, data, mode); err != nil {
+			return err
+		}
+		return os.Rename(tmp, path)
 	}
 
 	subscribeCmd := &cobra.Command{
@@ -387,21 +406,24 @@ func main() {
 		state, _ := json.MarshalIndent(map[string]any{
 			"url": url, "updated_at": time.Now().UTC().Format(time.RFC3339), "nodes": tags,
 		}, "", "  ")
-		if err := os.WriteFile(subStatePath, state, 0o600); err != nil {
-			return err
-		}
 		r := deploy.New(c, dryRun)
 		fmt.Printf("узлов: %d — применяю на роутер…\n", len(nodes))
-		r.PushConfig(merged)
+		// push FIRST (wave-1 MAJOR-4): состояние и локальная копия пишутся
+		// только при подтверждённом успехе — иначе status врал бы
+		if err := r.PushConfig(merged); err != nil {
+			return fmt.Errorf("конфиг подписки НЕ применён (роутер не тронут, состояние не записано): %w", err)
+		}
+		if err := writeFileAtomic(subStatePath, state, 0o600); err != nil {
+			return err
+		}
 		// сохраняем сгенерённый конфиг локально: следующий deploy подставит его
 		// вместо шаблона (порядок «subscribe до deploy» тоже работает)
 		subCfgPath := filepath.Join(homeDir, "subscribe-config.json")
-		if err := os.WriteFile(subCfgPath, merged, 0o600); err != nil {
+		if err := writeFileAtomic(subCfgPath, merged, 0o600); err != nil {
 			fmt.Println("WARN: не сохранил локальную копию конфига:", err)
 			return nil
 		}
-		fmt.Println("готово: конфиг подписки установлен (и сохранён локально для будущих deploy)")
-		fmt.Println("готово: конфиг подписки установлен; проверь: kgate verify")
+		fmt.Println("готово: конфиг подписки установлен (и сохранён локально для будущих deploy); проверь: kgate verify")
 		return nil
 	}
 	subAdd := &cobra.Command{
@@ -416,7 +438,11 @@ func main() {
 		Use:   "update",
 		Short: "перечитать подписку и применить заново",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st := readSubState()
+			st, err := readSubState()
+			if err != nil {
+				// битое состояние — НЕ тихий fallback на yaml (wave-1 MINOR-3)
+				return fmt.Errorf("состояние подписки нечитаемо: %w", err)
+			}
 			u, _ := st["url"].(string)
 			if u == "" {
 				u = load().Subscription.URL
@@ -432,7 +458,10 @@ func main() {
 		Short: "убрать подписку (конфиг вернётся из payload: kgate deploy --only files)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			os.Remove(subStatePath)
-			fmt.Println("подписка удалена из ~/.kgate/subscribe.json;")
+			// и локальную копию merged-конфига — иначе следующий deploy
+			// воскресит удалённую подписку (wave-1 review MAJOR-6)
+			os.Remove(filepath.Join(homeDir, "subscribe-config.json"))
+			fmt.Println("подписка удалена (subscribe.json + локальная копия конфига);")
 			fmt.Println("вернуть статический конфиг на роутер: rm /opt/etc/sing-box/config.json && kgate deploy --only files")
 			return nil
 		},
@@ -440,7 +469,11 @@ func main() {
 	subStatus := &cobra.Command{
 		Use: "status", Short: "статус подписки",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st := readSubState()
+			st, err := readSubState()
+			if err != nil {
+				fmt.Println("WARN: состояние подписки нечитаемо:", err)
+				return nil
+			}
 			if st == nil {
 				fmt.Println("подписка не настроена")
 				return nil

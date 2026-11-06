@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -146,15 +147,18 @@ func (r *Runner) Files() {
 	}
 	fmt.Println("→ deploy: files")
 	r.upload(Payload, `cat > /tmp/payload.tgz`, "передача payload на роутер")
-	// режим подписки: если `kgate subscribe add` уже сгенерил конфиг локально —
-	// он поедет на роутер ВМЕСТО шаблона из payload (порядок «subscribe до
-	// deploy» равнозначен «deploy → subscribe»)
-	subConfig := filepath.Join(os.TempDir(), "placeholder")
-	if h, err := os.UserHomeDir(); err == nil {
-		subConfig = filepath.Join(h, "subscribe-config.json")
-	}
-	if b, err := os.ReadFile(subConfig); err == nil && len(b) > 2 {
-		r.upload(b, `mkdir -p /opt/etc/sing-box && cat > /opt/etc/sing-box/config.json`, "конфиг из подписки (замена шаблона)")
+	// режим подписки: локальный merged-конфиг едет на роутер ВМЕСТО шаблона
+	// ТОЛЬКО при активной подписке (состояние subscribe.json существует) и
+	// валидном JSON. Протухшая копия после subscribe remove больше не
+	// воскресает подписку (wave-1 review MAJOR-6/MINOR-1); fallback на файл
+	// из TMPDIR убран — при чужом TMPDIR он подкладывал мусор в конфиг.
+	h, _ := os.UserHomeDir()
+	subConfig := filepath.Join(h, "subscribe-config.json")
+	_, subStatErr := os.Stat(filepath.Join(h, "subscribe.json"))
+	if subStatErr == nil {
+		if b, err := os.ReadFile(subConfig); err == nil && len(b) > 2 && json.Valid(b) {
+			r.upload(b, `mkdir -p /opt/etc/sing-box && cat > /opt/etc/sing-box/config.json`, "конфиг из подписки (замена шаблона)")
+		}
 	}
 	r.step("распаковка и раскладка (бинари, S99, ndm, конфиг, rulesets)", `mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
 mv -f kgate-arm64 /opt/sbin/kgate
@@ -238,11 +242,51 @@ func (r *Runner) Services() {
 
 // ---- destroy ----
 
-// PushConfig uploads a generated sing-box config (subscription mode) and
-// restarts the stack.
-func (r *Runner) PushConfig(merged []byte) {
-	r.upload(merged, `cat > /opt/etc/sing-box/config.json`, "установка конфига подписки")
-	r.step("рестарт sing-box (S99kgate)", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
+// stepErr / uploadErr — обёртки над reporting-механикой Runner: возвращают
+// ошибку, если счётчик failures вырос за время шага (wave-1 review MAJOR-4:
+// push-контракт подписки обязан быть честным).
+func (r *Runner) stepErr(label, script string) error {
+	before := r.failures
+	r.step(label, script)
+	if r.failures > before {
+		return fmt.Errorf("шаг провален: %s", label)
+	}
+	return nil
+}
+
+func (r *Runner) uploadErr(data []byte, cmd, label string) error {
+	before := r.failures
+	r.upload(data, cmd, label)
+	if r.failures > before {
+		return fmt.Errorf("передача провалена: %s", label)
+	}
+	return nil
+}
+
+// PushConfig uploads a generated sing-box config (subscription mode),
+// validates it ON the router, swaps atomically with a backup and restarts
+// the stack. Returns an error instead of silently succeeding
+// (wave-1 review MAJOR-4/5): the caller must not record state unless this
+// confirms success, and a check failure must leave the live config intact.
+func (r *Runner) PushConfig(merged []byte) error {
+	if !json.Valid(merged) {
+		return fmt.Errorf("merged config: невалидный JSON — роутер не трогаю")
+	}
+	// 1. upload to .new — живой конфиг не обрезаем in place
+	if err := r.uploadErr(merged, `cat > /opt/etc/sing-box/config.json.new`, "передача конфига подписки (.new)"); err != nil {
+		return err
+	}
+	// 2. validate on the router: невалидный merged не должен убить туннель
+	if err := r.stepErr("sing-box check (config.json.new)", `sing-box check -c /opt/etc/sing-box/config.json.new`); err != nil {
+		r.step("откат: .new удалён, живой конфиг не тронут", `rm -f /opt/etc/sing-box/config.json.new`)
+		return fmt.Errorf("sing-box check провален — конфиг НЕ применён: %w", err)
+	}
+	// 3. backup + atomic swap (mv в одной файловой системе)
+	if err := r.stepErr("swap: backup → атомарная замена", `cp -f /opt/etc/sing-box/config.json /opt/etc/sing-box/config.json.bak 2>/dev/null; mv -f /opt/etc/sing-box/config.json.new /opt/etc/sing-box/config.json; echo swapped`); err != nil {
+		return err
+	}
+	// 4. restart
+	return r.stepErr("рестарт sing-box (S99kgate)", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
 }
 
 // Destroy undoes the deploy (the mechanical part — confirmation happens in

@@ -221,6 +221,9 @@ func (s *sshRunner) upload(data []byte, remoteCmd string) error {
 		return err
 	}
 	defer sess.Close()
+	// remote stderr on failed cat>-uploads: without this the failure surfaces
+	// as a bare exit status with no cause (wave-1 review NIT)
+	sess.Stderr = os.Stderr
 	stdin, err := sess.StdinPipe()
 	if err != nil {
 		return err

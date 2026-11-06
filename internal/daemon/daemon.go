@@ -29,12 +29,29 @@ type Daemon struct {
 	mgr      *procManager
 	lastIPOK bool
 	upOnce   bool
-	cfgWarn  bool   // template placeholders detected: do not auto-raise a dead tunnel
-	pin      string // currently pinned hy2 server IP (route-pin follows DNS)
+	cfgWarn  bool // template placeholders detected: do not auto-raise a dead tunnel
+	// route-pin: источник истины — фактический `show ip route`; pins содержит
+	// только пины, которые мы сами подтвердили (ip → хост-владелец из конфига;
+	// "" = seed ServerIP от deploy до первой сверки)
+	pins      map[string]string
+	pinWarned map[string]bool                // log-once: аномалии пина молчат не дольше одного состояния
+	ndmcFn    func(string) string            // seam для тестов: подмена ndm CLI
+	resolveFn func(string) ([]net.IP, error) // seam для тестов: подмена резолвера
 }
 
 func New(cfg *model.Config) *Daemon {
-	return &Daemon{cfg: cfg, mgr: newProcManager(cfg)}
+	d := &Daemon{cfg: cfg, mgr: newProcManager(cfg), pinWarned: map[string]bool{}}
+	d.ndmcFn = d.ndmc // тесты подменяют ndmcFn/resolveFn фейками
+	d.resolveFn = net.LookupIP
+	return d
+}
+
+// ndm — вызов ndm CLI через seam (в проде это d.ndmc, тесты подменяют ndmcFn).
+func (d *Daemon) ndm(cmd string) string {
+	if d.ndmcFn != nil {
+		return d.ndmcFn(cmd)
+	}
+	return d.ndmc(cmd)
 }
 
 // warnPlaceholders fails loud on un-edited template configs: the packaged
@@ -239,12 +256,15 @@ echo dns-rules-applied`)
 
 // ---- hy2 server route-pin (dynamic) ----
 
-// serverHost extracts the hysteria2 server address from the sing-box config
-// (the daemon is the source of truth for the tunnel endpoint).
-func (d *Daemon) serverHost() string {
+// serverHosts extracts EVERY non-direct outbound endpoint from the sing-box
+// config: the static hy2 out plus any subscription nodes (vless/trojan/ss/
+// hysteria2 — whatever the provider feed merged in). The daemon is the source
+// of truth for tunnel endpoints; subscription configs drop hy2-out entirely,
+// so the old first-hysteria2 scan went blind on them (wave-1 review MAJOR-2).
+func (d *Daemon) serverHosts() []string {
 	b, err := os.ReadFile(d.cfg.Daemon.SingBoxConfig)
 	if err != nil {
-		return d.cfg.ServerIP // fallback: operator yaml value
+		return []string{d.cfg.ServerIP} // fallback: operator yaml value
 	}
 	var sb struct {
 		Outbounds []struct {
@@ -253,52 +273,136 @@ func (d *Daemon) serverHost() string {
 		} `json:"outbounds"`
 	}
 	if json.Unmarshal(b, &sb) != nil {
-		return d.cfg.ServerIP
+		return []string{d.cfg.ServerIP}
 	}
+	seen := map[string]bool{}
+	hosts := []string{}
 	for _, ob := range sb.Outbounds {
-		if ob.Type == "hysteria2" && ob.Server != "" {
-			return ob.Server
+		if ob.Server == "" || ob.Type == "direct" {
+			continue
+		}
+		if !seen[ob.Server] {
+			seen[ob.Server] = true
+			hosts = append(hosts, ob.Server)
 		}
 	}
-	return d.cfg.ServerIP
+	return hosts
 }
 
-// syncServerPin keeps the ndm route-pin pointed at the CURRENT address of the
-// hy2 server. The server-side DNS watchdog flips cdn.srwx.ru between exits
-// (failover); a stale pin routes the tunnel's own traffic through Proxy0 —
-// self-loop, no internet (the 03.11 class). Runs every supervisor tick.
+// syncServerPin keeps the ndm route-pins pointed at the CURRENT addresses of
+// every tunnel endpoint. The server-side DNS watchdog flips cdn.srwx.ru
+// between exits (failover); a stale pin routes the tunnel's own traffic
+// through Proxy0 — self-loop, no internet (the 03.11 class). Runs every
+// supervisor tick.
+//
+// Reconciliation discipline (wave-1 review MAJOR-1): d.pins holds ONLY pins
+// whose ndmc result we confirmed (plus the deploy-seeded ServerIP); failed
+// ndmc calls are logged loudly, leave the state untouched and retry next
+// tick. Anomalies (resolver down, AAAA-only, no endpoints) log once per
+// state via pinWarned (wave-1 review MINOR-3).
 func (d *Daemon) syncServerPin(logger func(string)) {
-	host := d.serverHost()
-	if host == "" {
-		return
-	}
-	if net.ParseIP(host) != nil { // literal IP needs no resolution
-		return
-	}
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return // resolver hiccup — keep the current pin
-	}
-	var v4 net.IP
-	for _, ip := range ips {
-		if v4 = ip.To4(); v4 != nil {
-			break
+	if d.pins == nil { // first tick: deploy already pinned cfg.ServerIP (seed: "" = владелец-неизвестен)
+		d.pins = map[string]string{}
+		if ip := net.ParseIP(d.cfg.ServerIP); ip != nil {
+			d.pins[ip.String()] = ""
 		}
 	}
-	if v4 == nil {
+	if d.pinWarned == nil {
+		d.pinWarned = map[string]bool{}
+	}
+	warn := func(key, msg string) {
+		if d.pinWarned[key] {
+			return
+		}
+		d.pinWarned[key] = true
+		logger(msg)
+	}
+	clearWarn := func(key string) { delete(d.pinWarned, key) }
+
+	want := map[string]bool{}
+	hostsByIP := map[string]string{} // провенанс: какой хост дал этот IP
+	for _, h := range d.serverHosts() {
+		if ip := net.ParseIP(h); ip != nil { // literal endpoint: no DNS to follow
+			if v4 := ip.To4(); v4 != nil {
+				want[v4.String()] = true
+				hostsByIP[v4.String()] = h
+			} else {
+				warn("literal6:"+h, "route-pin: endpoint "+h+" — не IPv4, пин не ставлю")
+			}
+			continue
+		}
+		ips, err := d.resolveFn(h)
+		if err != nil {
+			warn("resolve:"+h, "route-pin: DNS "+h+" не резолвится ("+err.Error()+") — держу текущие пины")
+			continue
+		}
+		clearWarn("resolve:" + h)
+		n := 0
+		for _, ip := range ips {
+			if v4 := ip.To4(); v4 != nil {
+				want[v4.String()] = true
+				if hostsByIP[v4.String()] == "" {
+					hostsByIP[v4.String()] = h
+				}
+				n++
+			}
+		}
+		if n == 0 {
+			warn("nov4:"+h, "route-pin: у "+h+" нет A-записей (только AAAA?) — пин не ставлю")
+		} else {
+			clearWarn("nov4:" + h)
+		}
+	}
+	if len(want) == 0 {
+		warn("noendpoints", "route-pin: в конфиге нет ни одного endpoint — пины не обновляю (риск петли при смене выхода сервера)")
 		return
 	}
-	want := v4.String()
-	if want == d.pin {
+	clearWarn("noendpoints")
+
+	// Adds first, then stale removes; every ndmc result is checked — on
+	// failure the pin state stays untouched and the next tick retries.
+	// Removals are gated on ALL adds being confirmed: otherwise a failed add
+	// plus a successful remove leaves ZERO pins (unpinned endpoint — loop
+	// risk); keeping the stale pin one extra tick is safe (direct route).
+	pendingAdds := 0
+	for ip := range want {
+		if _, ok := d.pins[ip]; ok {
+			continue
+		}
+		out := d.ndm("ip route " + ip + " ISP")
+		if ndmcFailed(out) {
+			logger("route-pin: НЕ удалось запинить " + ip + " (ndmc: " + strings.TrimSpace(out) + ") — повтор на следующем тике")
+			pendingAdds++
+			continue
+		}
+		d.pins[ip] = hostsByIP[ip] // провенанс: какой хост дал этот IP ("" = seed)
+		logger("route-pin: + " + ip + " (endpoint актуализирован)")
+	}
+	if pendingAdds > 0 {
+		warn("removals-deferred", "route-pin: есть неподтверждённые добавления — снятие устаревших пинов отложено до следующего тика")
 		return
 	}
-	if d.pin != "" {
-		d.ndmc(fmt.Sprintf("no ip route %s ISP", d.pin))
+	clearWarn("removals-deferred")
+	for ip := range d.pins {
+		if want[ip] {
+			continue
+		}
+		out := d.ndm("no ip route " + ip + " ISP")
+		if ndmcFailed(out) {
+			logger("route-pin: НЕ удалось снять устаревший пин " + ip + " (ndmc: " + strings.TrimSpace(out) + ") — повтор на следующем тике")
+			continue
+		}
+		delete(d.pins, ip)
+		logger("route-pin: − " + ip + " (endpoint ушёл — DNS сервера уехал)")
 	}
-	d.ndmc(fmt.Sprintf("ip route %s ISP", want))
-	old := d.pin
-	d.pin = want
-	logger("route-pin: " + old + " -> " + want + " (DNS сервера уехал — пин обновлён)")
+}
+
+// ndmcFailed reads the ndm CLI's failure surface: errors come back as
+// "[C] ... system failed [0x...]" / "invalid parameters" lines; success for
+// `ip route` / `no ip route` is silence.
+func ndmcFailed(out string) bool {
+	o := strings.ToLower(out)
+	return strings.Contains(o, "system failed") || strings.Contains(o, "invalid")
 }
 
 // ---- tunnel ----
@@ -429,7 +533,6 @@ func (d *Daemon) Run() error {
 	}
 
 	// once at startup: clear foreign processes and take ownership of the stack
-	d.pin = d.cfg.ServerIP // deploy запинил этот адрес в ndm-commands.sh
 	d.mgr.killAll()
 	d.warnPlaceholders(logger)
 	logger("supervisor: принял стек (sing-box + xray)")

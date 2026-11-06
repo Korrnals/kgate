@@ -134,8 +134,13 @@ func installPubKeyViaFirmwareSftp(cfg *model.Config, adminLogin, adminPassword, 
 	}
 	defer sftpCli.Close()
 	const keysPath = "/opt/etc/ssh/authorized_keys"
-	existing, _ := sftpRead(sftpCli, keysPath)
-	if strings.Contains(existing, pub) {
+	existing, readErr := sftpRead(sftpCli, keysPath)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		// never-clobber: unknown read state must NEVER reach the O_TRUNC write
+		// (wave-1 review MINOR-2 — the v1.4.1 lockout class)
+		return fmt.Errorf("чтение %s не удалось (%v) — не рискую перезаписью; отмена", keysPath, readErr)
+	}
+	if readErr == nil && strings.Contains(existing, pub) {
 		return nil // already installed
 	}
 	content := strings.TrimRight(existing, "\n")

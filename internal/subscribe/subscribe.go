@@ -92,8 +92,9 @@ func parseURIList(list string) ([]Node, error) {
 }
 
 func short(s string) string {
-	if len(s) > 32 {
-		return s[:32] + "…"
+	r := []rune(s)
+	if len(r) > 32 {
+		return string(r[:32]) + "…" // резать по границе руны: байтовая обрезка ломает UTF-8
 	}
 	return s
 }
@@ -108,15 +109,40 @@ func parseSingboxJSON(b []byte) ([]Node, error) {
 	}
 	skip := map[string]bool{"direct": true, "block": true, "dns": true, "selector": true, "urltest": true}
 	var nodes []Node
+	seen := map[string]bool{} // дедуп по финальному тегу: кривые фиды кладут тег дважды → дубль outbound валит sing-box на старте
+	kept := map[string]bool{} // исходные теги сохранённых узлов — для разбора detour
 	for _, ob := range cfg.Outbounds {
 		tag, _ := ob["tag"].(string)
 		typ, _ := ob["type"].(string)
 		if tag == "" || skip[typ] {
 			continue
 		}
+		full := tagPrefix + "-" + tag
+		if seen[full] {
+			continue // поздний дубль молча выбрасываем
+		}
+		// passthrough-поле порт: чужой JSON может нести строку/мусор/вне 1..65535
+		// — sing-box такой конфиг не примет; ругаемся сразу, с именем узла
+		if sp, ok := ob["server_port"].(float64); !ok || sp < 1 || sp > 65535 {
+			return nil, fmt.Errorf("узел %s: server_port %v — ожидалось число 1..65535", tag, ob["server_port"])
+		}
 		server, _ := ob["server"].(string)
-		nodes = append(nodes, Node{Tag: tagPrefix + "-" + tag, Type: typ,
+		seen[full] = true
+		kept[tag] = true
+		nodes = append(nodes, Node{Tag: full, Type: typ,
 			Outbound: ob, RawServer: server})
+	}
+	// detour из passthrough может ссылаться на отфильтрованный outbound
+	// (selector/urltest/пустой тег) — висячая ссылка валит старт sing-box;
+	// ссылку на сохранённый узел переписываем на его финальный тег, битую — сносим
+	for _, n := range nodes {
+		if dv, ok := n.Outbound["detour"].(string); ok {
+			if kept[dv] {
+				n.Outbound["detour"] = tagPrefix + "-" + dv
+			} else {
+				delete(n.Outbound, "detour")
+			}
+		}
 	}
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("в JSON-подписке нет клиентских outbounds")
@@ -310,16 +336,22 @@ func parseSS(uri string) (Node, error) {
 	}
 	// альтернативная форма: ss://base64(method:pass@host:port)#name
 	if method == "" {
-		body := strings.TrimPrefix(strings.SplitN(uri, "//", 2)[1], "")
+		body := strings.SplitN(uri, "//", 2)[1]
 		if q := strings.IndexAny(body, "?#"); q != -1 {
 			body = body[:q]
 		}
 		if dec, err := base64.RawStdEncoding.DecodeString(body); err == nil && strings.Contains(string(dec), ":") {
 			last := strings.LastIndex(string(dec), "@")
-			info := string(dec[:last])
-			parts := strings.SplitN(info, ":", 2)
-			hostport := string(dec[last+1:])
-			hp := strings.Split(hostport, ":")
+			if last == -1 {
+				// base64("m:p")#x — в userinfo нет @: наивный dec[:last] == dec[:-1] паникует
+				return Node{}, fmt.Errorf("ss: в userinfo нет @ (ожидался base64(method:pass@host:port))")
+			}
+			parts := strings.SplitN(string(dec[:last]), ":", 2)
+			hp := strings.Split(string(dec[last+1:]), ":")
+			if len(parts) != 2 || len(hp) != 2 {
+				// base64("m:p@host") без порта — hp короче двух, индексация вслепую паникует
+				return Node{}, fmt.Errorf("ss: не method:pass@host:port")
+			}
 			method, password = parts[0], parts[1]
 			host, port = hp[0], hp[1]
 		}
@@ -360,10 +392,19 @@ func Merge(skeleton []byte, nodes []Node) ([]byte, error) {
 		}
 	}
 	var candidates []string
+	// имя селектора святое: узел, чей тег совпал с selectorTag или уже занят
+	// (фрагмент "proxy" → shortName → "sub-proxy"), переименуется в -2/-3 —
+	// дубль тега валит sing-box на старте
+	used := map[string]bool{selectorTag: true}
 	for _, n := range nodes {
 		om := n.Outbound
-		om["tag"] = n.Tag // shortName уже дал префикс sub-
-		candidates = append(candidates, om["tag"].(string))
+		tag := n.Tag // shortName уже дал префикс sub-
+		for i := 2; used[tag]; i++ {
+			tag = fmt.Sprintf("%s-%d", n.Tag, i)
+		}
+		used[tag] = true
+		om["tag"] = tag
+		candidates = append(candidates, tag)
 		obs = append(obs, om)
 	}
 	if len(candidates) == 0 {
@@ -399,7 +440,9 @@ func Merge(skeleton []byte, nodes []Node) ([]byte, error) {
 }
 
 func atoi(s string, def int) int {
-	if v, err := strconv.Atoi(s); err == nil && v > 0 {
+	// порт сингбокса — 1..65535; вне диапазона (кривой фид с :99999) считается
+	// отсутствующим, как и не-число: падаем на дефолт, а не в конфиг
+	if v, err := strconv.Atoi(s); err == nil && v >= 1 && v <= 65535 {
 		return v
 	}
 	return def
@@ -429,6 +472,9 @@ func shortName(frag string) string {
 	n := strings.TrimSpace(frag)
 	if n == "" {
 		n = "node"
+	}
+	if r := []rune(n); len(r) > 64 {
+		n = string(r[:64]) // потолок тега: MB-фрагмент из фида не станет MB-тегом в конфиге
 	}
 	// тег сингбокса: буквы/цифры/-/_/.
 	var b strings.Builder
