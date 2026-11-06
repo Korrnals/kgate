@@ -324,6 +324,7 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 	knownHosts := map[string]bool{}  // все хосты, живущие в конфиге сейчас
 	resolvedOK := map[string]bool{}  // хосты, давшие ≥1 дозваниваемый v4 в этом тике
 	resolveFailed := false           // хоть один хост не резолвится в этом тике
+	nov4Seen := false                // хоть один хост AAAA-only (W4-3: тоже DNS-нездоровье)
 	for _, h := range d.serverHosts() {
 		knownHosts[h] = true
 		if ip := net.ParseIP(h); ip != nil { // literal endpoint: no DNS to follow
@@ -354,9 +355,14 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 			}
 		}
 		if n == 0 {
+			// AAAA-only (wave-3 F-3): хозяин жив, но дозваниваемого v4 не дал —
+			// replacement-определённость неизвестна → его пины удерживаются
+			// provenance-гейтом (resolvedOK не выставляется) + seed-гейтом (W4-3)
+			nov4Seen = true
 			warn("nov4:"+h, "route-pin: у "+h+" нет A-записей (только AAAA?) — пин не ставлю")
 		} else {
 			clearWarn("nov4:" + h)
+			resolvedOK[h] = true // волна-4 W4-1: здоровый доменный хост ре-стампится КАЖДЫЙ тик
 		}
 	}
 	if len(want) == 0 {
@@ -364,6 +370,7 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 		return
 	}
 	clearWarn("noendpoints")
+	dnsUnhealthy := resolveFailed || nov4Seen // W4-3: seed-гейт видит полное DNS-здоровье тика
 
 	// Adds first, then stale removes; every ndmc result is checked — on
 	// failure the pin state stays untouched and the next tick retries.
@@ -402,7 +409,7 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 		if want[ip] {
 			continue
 		}
-		if (knownHosts[owner] && !resolvedOK[owner]) || (owner == "" && resolveFailed) {
+		if (knownHosts[owner] && !resolvedOK[owner]) || (owner == "" && dnsUnhealthy) {
 			removedDeferred = true
 			continue
 		}

@@ -258,6 +258,7 @@ func TestNdmcFailed(t *testing.T) {
 		"":            false,
 		"some output": false,
 		"[C] ndm: Cli::Main: system failed [0xcffd00d9]": true,
+		"ERR(exit status 127): /bin/ndmc: not found":     true,
 		"ndmc: invalid parameters.":                      true,
 	}
 	for in, want := range cases {
@@ -379,23 +380,53 @@ func TestSyncPin_ProvenanceGate_OwnerGoneFlushed_UnhealthyOwnerKept(t *testing.T
 
 }
 
-func TestSyncPin_AAAAOnly_KeepsConfirmedPins(t *testing.T) {
-	// wave-3 F-3: хост отдавал A (пин подтверждён), затем стал AAAA-only —
-	// пин удерживается (replacement-определённость неизвестна)
-	d, _ := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
-	v4 := true
-	d.resolveFn = func(string) ([]net.IP, error) {
-		if v4 {
-			return ips("2.2.2.2"), nil
-		}
-		return ips("2001:db8::1"), nil // стал AAAA-only
-	}
+func TestSyncPin_HealthyOwner_StalePinFlushedOnDNSFlip(t *testing.T) {
+	// wave-4 W4-1 regression: healthy in-config owner, DNS moves to a new IP —
+	// old pin REMOVED, new pin added. Without resolvedOK stamping the hold
+	// condition is permanently true and removal is dead code.
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	current := []net.IP{net.ParseIP("2.2.2.2")}
+	d.resolveFn = func(string) ([]net.IP, error) { return current, nil }
 	d.syncServerPin(func(string) {})
 	if _, ok := d.pins["2.2.2.2"]; !ok {
-		t.Fatal("нет подтверждённого пина после tick 1")
+		t.Fatalf("нет пина после tick 1: %v", d.pins)
 	}
-	d.syncServerPin(func(string) {}) // tick 2: AAAA-only
-	if _, ok := d.pins["2.2.2.2"]; !ok {
-		t.Fatalf("AAAA-only флип срезал подтверждённый пин: %v", d.pins)
+	// DNS уехал:healthy owner resolves to a NEW address — резолвится здорово
+	current = []net.IP{net.ParseIP("3.3.3.3")}
+	fake.cmds = nil
+	d.syncServerPin(func(string) {})
+	got := fake.dels()
+	if len(got) != 1 || got[0] != "2.2.2.2" {
+		t.Fatalf("dels = %v, want [2.2.2.2] — healthy-owner stale pin должен сниматься", got)
+	}
+	if _, ok := d.pins["3.3.3.3"]; !ok {
+		t.Fatalf("новый пин не добавлен: %v", d.pins)
+	}
+}
+
+func TestSyncPin_AAAAOnly_KeepsConfirmedPins(t *testing.T) {
+	// wave-3 F-3 + wave-4 W4-2: хост A отдавал A (пин подтверждён), затем стал
+	// AAAA-only; host B здоров и даёт want — provenance-hold удерживает пин A
+	// (не noendpoints early-return: want непуст благодаря B)
+	d, _ := testDaemon(t, "1.1.1.1", "hysteria2/host-a.example", "vless/host-b.example")
+	aaaaOnly := false
+	d.resolveFn = func(h string) ([]net.IP, error) {
+		switch {
+		case h == "host-b.example":
+			return ips("6.6.6.6"), nil
+		case aaaaOnly:
+			return ips("2001:db8::1"), nil
+		default:
+			return ips("5.5.5.5"), nil
+		}
+	}
+	d.syncServerPin(func(string) {})
+	if _, ok := d.pins["5.5.5.5"]; !ok {
+		t.Fatalf("нет подтверждённого пина A после tick 1: %v", d.pins)
+	}
+	aaaaOnly = true
+	d.syncServerPin(func(string) {}) // tick 2: A стал AAAA-only
+	if _, ok := d.pins["5.5.5.5"]; !ok {
+		t.Fatalf("AAAA-only флип срезал подтверждённый пин A: %v", d.pins)
 	}
 }

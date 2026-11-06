@@ -37,9 +37,17 @@ follows [Semantic Versioning](https://semver.org/).
   Full investigation: docs/admin/operations.md.
 
 ### Fixed
-- daemon: in multi-host configs a host whose DNS resolution failed for a tick
-  had its confirmed pins stripped as "stale" (wave-2 review) — removals now
-  gated on DNS health, matching the logged promise.
+- daemon: route-pin removals are PROVENANCE-SCOPED (wave-2/3/4 cascade): a
+  pin is held only while its owner is in-config but DNS-unhealthy (resolve
+  error or AAAA-only); pins of owners that left the config flush even when
+  other hosts' DNS is down; healthy-owner stale pins flush on DDNS flips.
+  destroy sweeps daemon-era /32 ISP pins before the startup-config save, so
+  stale subscription routes no longer fossilize; the cleanliness gate counts
+  leftover pins.
+- deploy: PushConfig validates on-router (sing-box check) and swaps
+  atomically with a backup; swap echo no longer masks mv failure; the check
+  uses the full /opt/sbin path; ndmc failure detection covers exec-level
+  ERR( prefix.
 
 ## [1.4.2] - 2026-11-06
 
