@@ -32,6 +32,13 @@ tar -xzf "$TMP/kgate.tar.gz" -C "$TMP"
 mv -f "$TMP/kgate" "${DEST}/kgate"
 chmod 0755 "${DEST}/kgate"
 
+# shell completion (bash): генерится самим бинарем
+COMPL_DIR="${KGATE_COMPL_DIR:-$HOME/.local/share/bash-completion/completions}"
+if [ -x "${DEST}/kgate" ] && mkdir -p "$COMPL_DIR" 2>/dev/null \
+   && "${DEST}/kgate" completion bash > "$COMPL_DIR/kgate" 2>/dev/null; then
+  echo "kgate-install: bash-completion -> $COMPL_DIR/kgate (перелогинься или: source $COMPL_DIR/kgate)"
+fi
+
 # man page: kgate.1 travels inside the release archive
 if [ -f "$TMP/kgate.1" ]; then
   MANDIR="${KGATE_MANDIR:-$HOME/.local/share/man/man1}"

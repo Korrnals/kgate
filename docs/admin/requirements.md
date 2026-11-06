@@ -36,9 +36,20 @@
 | **Маршрутизация** | RU-сплит из коробки: geosite/geoip rulesets в комплекте (RU-direct, зарубежное — через туннель), режимы rule/global (`kgate ruexit`) |
 | **DNS** | перехват клиентского DNS (iptables SBREDIRECT → чистый резолвер) + анти-утечка IPv6 DNS |
 
-### Подписки и протоколы (детали)
+### Подписки и протоколы — подробно
 
-- **Подписки поддерживаются**: `kgate subscribe add <url>` — форматы: base64 URI-лист (**vless** incl. Reality/flow, **hysteria2**, **trojan**, **shadowsocks**) и готовый **sing-box JSON** (например, `singbox_subscription.json` от нашей инфры). Применение: узлы подписки становятся пулом outbounds + selector, RU-split правила kgate сохраняются. Обновление: `kgate subscribe update`.
+**Два пути получить туннель:**
+
+| Путь | Что нужно | Пароль |
+|---|---|---|
+| **Статический** (по умолчанию) | свой hysteria2-сервер (sing-box/hysteria2, TLS на домен) | задаёшь ты в `kgate config create` → в конфиг sing-box |
+| **Подписка провайдера** | URL подписки — сервер/узлы/пароли приезжают из неё | руками не задаётся |
+
+Форматы подписки (`kgate subscribe add <url>`): base64 URI-лист — **vless** (Reality: pbk/sid, flow xtls-rprx-vision, utls, ws/grpc), **hysteria2** (± obfs salamander), **trojan**, **shadowsocks** — и готовый **sing-box JSON** (какой рендерит инфраструктура Korrnals).
+
+Подписка применяется одной командой (до или после `deploy` — оба порядка), обновление — `kgate subscribe update`. RU-split и правила kgate сохраняются: узлы подписки = пул выходов, маршрутизация остаётся kgate'овской.
+
+Чего в подписках пока нет: vmess, wireguard, tuic (движок умеет — парсер ещё нет); авто-обновление по таймеру демон-сайд (сейчас — `kgate subscribe update` вручную).
 - **Другие протоколы** (wireguard, tuic, vmess) — движок sing-box их умеет, но парсер подписки их пока не разбирает.
 - **Режим сервера** — kgate только клиент: сервер hysteria2/vless нужно поднять отдельно (VPS) или использовать предоставленный
 - **Нативной карточки в веб-интерфейсе роутера** — реестр компонентов KeeneticOS закрыт; управление: тумблер Proxy0 в вебе + CLI/mTLS API

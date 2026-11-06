@@ -25,7 +25,7 @@
 | ОС | KeeneticOS / NetcrazeOS **4.x–5.x** + Entware в `/opt` (проверено: 5.01.C.7.0-4, Netcraze Ultra) |
 | Место | **≥ 120 МБ** свободного под стек (рекомендуется USB; встроенная память Ultra — впритык) |
 | Ноутбук | Linux amd64/arm64 + ssh-ключ до роутера (ssh-бинарник **не нужен** — транспорт на Go) |
-| Туннель | **hysteria2** (± obfs salamander) до **своего/предоставленного** сервера (sing-box/hysteria2, TLS на домен); пароль, не подписки |
+| Туннель | **hysteria2** (± obfs salamander) до своего/предоставленного сервера, **или подписка провайдера** (vless/Reality, hysteria2, trojan, ss — `kgate subscribe add <url>`) |
 | Локально | SOCKS5 `:1080`/`1090`, redirect `:1081`; RU-сплит (geosite/geoip в комплекте); тумблер Proxy0 + per-device политики |
 
 **Поддерживается:** hysteria2 и подписки (vless/hysteria2/trojan/ss, sing-box JSON). **Нет из коробки:** wireguard/tuic/vmess-парсинг, режим сервера, нативная карточка в веб-UI.

@@ -146,6 +146,16 @@ func (r *Runner) Files() {
 	}
 	fmt.Println("→ deploy: files")
 	r.upload(Payload, `cat > /tmp/payload.tgz`, "передача payload на роутер")
+	// режим подписки: если `kgate subscribe add` уже сгенерил конфиг локально —
+	// он поедет на роутер ВМЕСТО шаблона из payload (порядок «subscribe до
+	// deploy» равнозначен «deploy → subscribe»)
+	subConfig := filepath.Join(os.TempDir(), "placeholder")
+	if h, err := os.UserHomeDir(); err == nil {
+		subConfig = filepath.Join(h, "subscribe-config.json")
+	}
+	if b, err := os.ReadFile(subConfig); err == nil && len(b) > 2 {
+		r.upload(b, `mkdir -p /opt/etc/sing-box && cat > /opt/etc/sing-box/config.json`, "конфиг из подписки (замена шаблона)")
+	}
 	r.step("распаковка и раскладка (бинари, S99, ndm, конфиг, rulesets)", `mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
 mv -f kgate-arm64 /opt/sbin/kgate
 mv -f sing-box /opt/sbin/sing-box

@@ -393,6 +393,14 @@ func main() {
 		r := deploy.New(c, dryRun)
 		fmt.Printf("узлов: %d — применяю на роутер…\n", len(nodes))
 		r.PushConfig(merged)
+		// сохраняем сгенерённый конфиг локально: следующий deploy подставит его
+		// вместо шаблона (порядок «subscribe до deploy» тоже работает)
+		subCfgPath := filepath.Join(homeDir, "subscribe-config.json")
+		if err := os.WriteFile(subCfgPath, merged, 0o600); err != nil {
+			fmt.Println("WARN: не сохранил локальную копию конфига:", err)
+			return nil
+		}
+		fmt.Println("готово: конфиг подписки установлен (и сохранён локально для будущих deploy)")
 		fmt.Println("готово: конфиг подписки установлен; проверь: kgate verify")
 		return nil
 	}
