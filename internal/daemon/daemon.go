@@ -321,9 +321,13 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 
 	want := map[string]bool{}
 	hostsByIP := map[string]string{} // провенанс: какой хост дал этот IP
+	knownHosts := map[string]bool{}  // все хосты, живущие в конфиге сейчас
+	resolvedOK := map[string]bool{}  // хосты, давшие ≥1 дозваниваемый v4 в этом тике
 	resolveFailed := false           // хоть один хост не резолвится в этом тике
 	for _, h := range d.serverHosts() {
+		knownHosts[h] = true
 		if ip := net.ParseIP(h); ip != nil { // literal endpoint: no DNS to follow
+			resolvedOK[h] = true // литерал всегда «здоров» для removal-гейта
 			if v4 := ip.To4(); v4 != nil {
 				want[v4.String()] = true
 				hostsByIP[v4.String()] = h
@@ -382,21 +386,24 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 	}
 	if pendingAdds > 0 {
 		warn("removals-deferred", "route-pin: есть неподтверждённые добавления — снятие устаревших пинов отложено до следующего тика")
-		return
-	}
-	// Removals also gated on DNS health (wave-2 MAJOR): a host whose resolution
-	// FAILED this tick contributed nothing to want — without this gate its
-	// confirmed pins would be stripped as "stale" while sing-box keeps dialing
-	// them (self-loop class re-opened). Stale pins are direct routes — keeping
-	// them one extra tick is always safe.
-	if resolveFailed {
-		warn("removals-deferred-dns", "route-pin: DNS-неопределённость по части endpoint'ов — снятие устаревших пинов отложено до следующего тика")
+		clearWarn("removals-deferred-dns")
 		return
 	}
 	clearWarn("removals-deferred")
-	clearWarn("removals-deferred-dns")
-	for ip := range d.pins {
+	// wave-3 F-1: provenance-scoped DNS gate (замена глобального). Пин
+	// удерживается, если его ВЛАДЕЛЕЦ ещё в конфиге, но DNS-нездоров в этом
+	// тике (ошибка резолва или AAAA-only — replacement-определённость
+	// неизвестна; wave-3 F-3). Пины владельцев, ушедших из конфига, или чьи
+	// владельцы резолвятся нормально — снимаются. Ownerless seed (deploy)
+	// ждёт полностью здорового тика. Stale-пин = прямой маршрут — safe
+	// direction, удержание всегда безопасно.
+	removedDeferred := false
+	for ip, owner := range d.pins {
 		if want[ip] {
+			continue
+		}
+		if (knownHosts[owner] && !resolvedOK[owner]) || (owner == "" && resolveFailed) {
+			removedDeferred = true
 			continue
 		}
 		out := d.ndm("no ip route " + ip + " ISP")
@@ -406,6 +413,11 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 		}
 		delete(d.pins, ip)
 		logger("route-pin: − " + ip + " (endpoint ушёл — DNS сервера уехал)")
+	}
+	if removedDeferred {
+		warn("removals-deferred-dns", "route-pin: часть endpoint'ов DNS-нездорова — их пины удержаны (stale-пин = прямой маршрут, безопасно)")
+	} else {
+		clearWarn("removals-deferred-dns")
 	}
 }
 

@@ -306,7 +306,96 @@ func TestSyncPin_MultiHost_ResolveFailureKeepsConfirmedPins(t *testing.T) {
 		t.Fatalf("B's confirmed pin lost on resolve failure: %v", d.pins)
 	}
 	joined := strings.Join(logs, "\n")
-	if !strings.Contains(joined, "не резолвится") || !strings.Contains(joined, "отложено") {
-		t.Fatalf("expected resolve warn + deferral log, got: %v", logs)
+	if !strings.Contains(joined, "не резолвится") || !strings.Contains(joined, "удержаны") {
+		t.Fatalf("expected resolve warn + hold log, got: %v", logs)
+	}
+}
+
+func TestSyncPin_ProvenanceGate_OwnerGoneFlushed_UnhealthyOwnerKept(t *testing.T) {
+	// wave-3 F-1: removals scoped by pin provenance, not global DNS health.
+	// tick 1: hosts A,B,C healthy → pins for each. tick 2: C removed from the
+	// config, A's DNS dies, B healthy → C's pin FLUSHED (owner left config),
+	// A's pin KEPT (owner unhealthy), seed kept (global uncertainty).
+	dir := t.TempDir()
+	cfgPath := dir + "/config.json"
+	write := func(body string) {
+		if err := os.WriteFile(cfgPath, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &model.Config{}
+	cfg.ServerIP = "1.1.1.1"
+	cfg.Daemon.SingBoxConfig = cfgPath
+	d := &Daemon{cfg: cfg}
+	fake := &fakeNDM{}
+	d.ndmcFn = fake.run
+
+	write(`{"outbounds":[
+		{"type":"vless","tag":"a","server":"host-a.example","server_port":443,"uuid":"u"},
+		{"type":"vless","tag":"b","server":"host-b.example","server_port":443,"uuid":"u"},
+		{"type":"vless","tag":"c","server":"host-c.example","server_port":443,"uuid":"u"}]}`)
+	d.resolveFn = func(h string) ([]net.IP, error) {
+		m := map[string][]net.IP{
+			"host-a.example": ips("5.5.5.5"),
+			"host-b.example": ips("6.6.6.6"),
+			"host-c.example": ips("7.7.7.7"),
+		}
+		return m[h], nil
+	}
+	d.syncServerPin(func(string) {}) // tick 1: всё здорово
+	for _, ip := range []string{"5.5.5.5", "6.6.6.6", "7.7.7.7"} {
+		if _, ok := d.pins[ip]; !ok {
+			t.Fatalf("pin %s отсутствует после tick 1: %v", ip, d.pins)
+		}
+	}
+	// сид ServerIP легитимно смывается в здоровом тике (deploy-пин заменён
+	// актуальными endpoint'ами — это и есть DNS-flip self-heal)
+	if _, ok := d.pins["1.1.1.1"]; ok {
+		t.Fatalf("сид должен быть заменён актуальными пинами в здоровом тике: %v", d.pins)
+	}
+
+	// tick 2: C ушёл из конфига, A не резолвится, B жив
+	write(`{"outbounds":[
+		{"type":"vless","tag":"a","server":"host-a.example","server_port":443,"uuid":"u"},
+		{"type":"vless","tag":"b","server":"host-b.example","server_port":443,"uuid":"u"}]}`)
+	failA := map[string]bool{"host-a.example": true}
+	d.resolveFn = func(h string) ([]net.IP, error) {
+		if failA[h] {
+			return nil, fmt.Errorf("temp fail")
+		}
+		m := map[string][]net.IP{"host-b.example": ips("6.6.6.6")}
+		return m[h], nil
+	}
+	fake.cmds = nil
+	d.syncServerPin(func(string) {})
+
+	got := fake.dels()
+	if len(got) != 1 || got[0] != "7.7.7.7" {
+		t.Fatalf("dels = %v, want только ушедший из конфига 7.7.7.7 (A-пин удержан)", got)
+	}
+	if _, ok := d.pins["5.5.5.5"]; !ok {
+		t.Fatalf("A-пин потерян при живом-в-конфиге, но нездоровом владельце: %v", d.pins)
+	}
+
+}
+
+func TestSyncPin_AAAAOnly_KeepsConfirmedPins(t *testing.T) {
+	// wave-3 F-3: хост отдавал A (пин подтверждён), затем стал AAAA-only —
+	// пин удерживается (replacement-определённость неизвестна)
+	d, _ := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	v4 := true
+	d.resolveFn = func(string) ([]net.IP, error) {
+		if v4 {
+			return ips("2.2.2.2"), nil
+		}
+		return ips("2001:db8::1"), nil // стал AAAA-only
+	}
+	d.syncServerPin(func(string) {})
+	if _, ok := d.pins["2.2.2.2"]; !ok {
+		t.Fatal("нет подтверждённого пина после tick 1")
+	}
+	d.syncServerPin(func(string) {}) // tick 2: AAAA-only
+	if _, ok := d.pins["2.2.2.2"]; !ok {
+		t.Fatalf("AAAA-only флип срезал подтверждённый пин: %v", d.pins)
 	}
 }

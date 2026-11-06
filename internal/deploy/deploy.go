@@ -336,6 +336,10 @@ ndmc -c "no interface Proxy0"
 echo "ndm objects removed"`)
 	// save после удаления: без него снятые ndm-объекты воскресают при ребуте
 	// (running-config не равен startup; объекты жили только в running)
+	// wave-3 NEW-5: СНАЧАЛА свип daemon-era /32 ISP-пинов (мульти-хост,
+	// подписочные endpoint'ы — их знал только daemon), потом save: иначе save
+	// окаменяет остаточные пины в startup-config навсегда
+	r.step("свип daemon-era /32 ISP-пинов", `for r in $(ndmc -c "show ip route" | awk '/\/32/ && /ISP/ {split($1,a,"/"); print a[1]}' | sort -u); do ndmc -c "no ip route $r ISP"; done; echo "pin sweep done"`)
 	r.step("system configuration save (фиксация удаления)", `ndmc -c "system configuration save" && echo saved`)
 
 	fmt.Println("→ destroy: контроль чистоты")
@@ -343,7 +347,8 @@ echo "ndm objects removed"`)
 	// и напечатает leftover=N с отступом
 	r.step("следы kgate в running-config (ожидаем 0)", `command -v ndmc >/dev/null || { echo "ndmc not found"; exit 1; }
 LEFT=$(ndmc -c "show running-config" 2>/dev/null | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
-echo "leftover=$LEFT"
-test "$LEFT" -eq 0`)
+PINS=$(ndmc -c "show ip route" 2>/dev/null | grep -cE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32 .*ISP" || true)
+echo "leftover=$LEFT pins=$PINS"
+test "$LEFT" -eq 0 -a "$PINS" -eq 0`)
 	fmt.Println("готово. На ноутбуке остались клиентские файлы (~/.kgate, ~/.local/bin/kgate) — удали руками, если больше не нужен клиент.")
 }
