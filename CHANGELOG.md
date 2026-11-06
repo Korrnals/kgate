@@ -24,6 +24,13 @@ follows [Semantic Versioning](https://semver.org/).
   The deploy files-stage no longer overwrites a subscription-managed
   config. URI-list parser is unit-tested (reality/flow/obfs/ss variants).
 
+### Known limitations
+- KeeneticOS 5.01.C web dashboard renders the Proxy0 connection switch as
+  OFF for connections created/raised via CLI, even when the tunnel is up
+  and passing traffic (verified 30+ min uptime across page reloads and
+  config-save). Not a kgate defect — source of truth is `kgate status` /
+  `kgate verify`. Documented in docs/admin/operations.md.
+
 ### Fixed
 - deploy: the files stage never clobbers `/opt/etc/ssh/authorized_keys`
   anymore — release payloads carry a sanitized placeholder key, and the
