@@ -231,6 +231,13 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 func (r *Runner) NDM() {
 	fmt.Println("→ deploy: ndm (Proxy0, пины, DNS, политики)")
 	r.step("ndm-commands.sh идемпотентным прогоном", `{ test -f /opt/etc/ndm-commands.sh || { echo "ndm-commands.sh missing — run kgate files first"; exit 1; }; KGATE_SERVER_IP="`+r.c.ServerIP+`" sh /opt/etc/ndm-commands.sh 2>&1; }`)
+	// system configuration save ПОСЛЕ подъёма Proxy0: веб-переключатель читает
+	// конфиг-вью (show.sc.interface up), и для объекта, хоть раз тронутого
+	// вебом/RCI, up-узел в нём материализуется ТОЛЬКО явным save — без него
+	// тумблер в дашборде рисует OFF при рабочем туннеле (см. investigate:
+	// kgate-session-reports/tumbler-verdict.md). Save также фиксирует intent
+	// "up" во flash — после ребута ОС уважает его.
+	r.step("system configuration save (веб-модель тумблера + intent up)", `ndmc -c "system configuration save" && echo saved`)
 }
 
 func (r *Runner) Services() {
@@ -325,6 +332,9 @@ ndmc -c "no ip policy VPN-Laptops-Phones"
 ndmc -c "no ip policy DIRECT-NOVPN"
 ndmc -c "no interface Proxy0"
 echo "ndm objects removed"`)
+	// save после удаления: без него снятые ndm-объекты воскресают при ребуте
+	// (running-config не равен startup; объекты жили только в running)
+	r.step("system configuration save (фиксация удаления)", `ndmc -c "system configuration save" && echo saved`)
 
 	fmt.Println("→ destroy: контроль чистоты")
 	// скрипт сам валидирует счётчик (test -eq 0): при остатках step поставит ✗

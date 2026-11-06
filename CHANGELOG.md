@@ -27,11 +27,15 @@ follows [Semantic Versioning](https://semver.org/).
   config. URI-list parser is unit-tested (reality/flow/obfs/ss variants).
 
 ### Known limitations
-- KeeneticOS 5.01.C web dashboard renders the Proxy0 connection switch as
-  OFF for connections created/raised via CLI, even when the tunnel is up
-  and passing traffic (verified 30+ min uptime across page reloads and
-  config-save). Not a kgate defect — source of truth is `kgate status` /
-  `kgate verify`. Documented in docs/admin/operations.md.
+- ~~KeeneticOS 5.01.C web dashboard renders the Proxy0 connection switch as
+  OFF for connections created/raised via CLI~~ **RESOLVED for kgate ≥ 1.4.3**:
+  root cause found (the switch reads the config-view `show.sc.interface up`
+  node, which for web-touched objects only materializes via an explicit
+  `system configuration save` — kgate now runs it in deploy/destroy).
+  ⚠️ Clicking the switch on a live tunnel is NOT a no-op: it writes a `down`
+  intent and SAVES it (observed live: a click took the tunnel down for 33
+  minutes with no auto-recovery). Use `kgate toggle off` / `kgate destroy`.
+  Full investigation: docs/admin/operations.md.
 
 ### Fixed
 - deploy: the files stage never clobbers `/opt/etc/ssh/authorized_keys`
