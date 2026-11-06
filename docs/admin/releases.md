@@ -85,9 +85,9 @@ sha256sum -c --ignore-missing checksums-sha256.txt
 
 ```bash
 # GPG-подпись архива (detached)
-gpg --verify kgate_1.4.1_linux_arm64.tar.gz.asc kgate_1.4.1_linux_arm64.tar.gz
+gpg --verify kgate_1.4.2_linux_arm64.tar.gz.asc kgate_1.4.2_linux_arm64.tar.gz
 # cosign-bundle (ключ публикации — у мейнтейнера; в релизах ≤ 1.1.1 публиковался как cosign.pub)
-cosign verify-blob --key cosign.pub --bundle kgate_1.4.1_linux_arm64.tar.gz.sig kgate_1.4.1_linux_arm64.tar.gz
+cosign verify-blob --key cosign.pub --bundle kgate_1.4.2_linux_arm64.tar.gz.sig kgate_1.4.2_linux_arm64.tar.gz
 ```
 
 ## ⏪ Откат версии

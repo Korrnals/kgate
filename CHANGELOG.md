@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-11-06
+
 ### Added
 - ssh: self-managed keypair — kgate generates its own ed25519 pair
   (`~/.kgate/id_ed25519`, new default for `ssh_key`) and installs the
