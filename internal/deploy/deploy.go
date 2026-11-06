@@ -346,8 +346,12 @@ echo "ndm objects removed"`)
 	// скрипт сам валидирует счётчик (test -eq 0): при остатках step поставит ✗
 	// и напечатает leftover=N с отступом
 	r.step("следы kgate в running-config (ожидаем 0)", `command -v ndmc >/dev/null || { echo "ndmc not found"; exit 1; }
-LEFT=$(ndmc -c "show running-config" 2>/dev/null | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
-PINS=$(ndmc -c "show ip route" 2>/dev/null | grep -cE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32 .*ISP" || true)
+RC=$(ndmc -c "show running-config" 2>&1) || { echo "ndmc query FAILED"; exit 1; }
+[ -n "$RC" ] || { echo "running-config query EMPTY — blind gate запрещён"; exit 1; }
+RQ=$(ndmc -c "show ip route" 2>&1) || { echo "ip route query FAILED"; exit 1; }
+[ -n "$RQ" ] || { echo "ip route query EMPTY — blind gate запрещён"; exit 1; }
+LEFT=$(printf '%s\n' "$RC" | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
+PINS=$(printf '%s\n' "$RQ" | grep -cE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32 .*ISP" || true)
 echo "leftover=$LEFT pins=$PINS"
 test "$LEFT" -eq 0 -a "$PINS" -eq 0`)
 	fmt.Println("готово. На ноутбуке остались клиентские файлы (~/.kgate, ~/.local/bin/kgate) — удали руками, если больше не нужен клиент.")
