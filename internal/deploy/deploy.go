@@ -283,13 +283,15 @@ func (r *Runner) PushConfig(merged []byte) error {
 	if err := r.uploadErr(merged, `cat > /opt/etc/sing-box/config.json.new`, "передача конфига подписки (.new)"); err != nil {
 		return err
 	}
-	// 2. validate on the router: невалидный merged не должен убить туннель
-	if err := r.stepErr("sing-box check (config.json.new)", `sing-box check -c /opt/etc/sing-box/config.json.new`); err != nil {
+	// 2. validate on the router: невалидный merged не должен убить туннель;
+	// полный путь — PATH демона не гарантирует /opt/sbin
+	if err := r.stepErr("sing-box check (config.json.new)", `/opt/sbin/sing-box check -c /opt/etc/sing-box/config.json.new`); err != nil {
 		r.step("откат: .new удалён, живой конфиг не тронут", `rm -f /opt/etc/sing-box/config.json.new`)
 		return fmt.Errorf("sing-box check провален — конфиг НЕ применён: %w", err)
 	}
-	// 3. backup + atomic swap (mv в одной файловой системе)
-	if err := r.stepErr("swap: backup → атомарная замена", `cp -f /opt/etc/sing-box/config.json /opt/etc/sing-box/config.json.bak 2>/dev/null; mv -f /opt/etc/sing-box/config.json.new /opt/etc/sing-box/config.json; echo swapped`); err != nil {
+	// 3. backup + atomic swap (mv в одной файловой системе); echo — только
+	// после успешного mv, иначе маскирует его провал
+	if err := r.stepErr("swap: backup → атомарная замена", `cp -f /opt/etc/sing-box/config.json /opt/etc/sing-box/config.json.bak 2>/dev/null; mv -f /opt/etc/sing-box/config.json.new /opt/etc/sing-box/config.json && echo swapped`); err != nil {
 		return err
 	}
 	// 4. restart

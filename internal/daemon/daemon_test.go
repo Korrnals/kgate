@@ -266,3 +266,47 @@ func TestNdmcFailed(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncPin_MultiHost_ResolveFailureKeepsConfirmedPins(t *testing.T) {
+	// wave-2 MAJOR regression: host A resolves fine, host B's DNS fails for a
+	// tick — B's confirmed pins must NOT be stripped as stale (the removal
+	// gate must see the resolve failure), while A's pins track normally.
+	d, fake := testDaemon(t, "1.1.1.1",
+		"hysteria2/host-a.example",
+		"vless/host-b.example",
+	)
+	resolver := map[string][]net.IP{"host-a.example": ips("5.5.5.5")}
+	failB := false
+	d.resolveFn = func(h string) ([]net.IP, error) {
+		if h == "host-b.example" {
+			if failB {
+				return nil, fmt.Errorf("temp fail")
+			}
+			return ips("6.6.6.6"), nil
+		}
+		return resolver[h], nil
+	}
+
+	d.syncServerPin(func(string) {}) // tick 1: both resolve → pins {1.1.1.1?, 5.5.5.5, 6.6.6.6}
+	if _, ok := d.pins["6.6.6.6"]; !ok {
+		t.Fatalf("B's pin missing after tick 1: %v", d.pins)
+	}
+
+	failB = true // tick 2: B's DNS dies
+	fake.cmds = nil
+	var logs []string
+	d.syncServerPin(func(s string) { logs = append(logs, s) })
+
+	for _, c := range fake.cmds {
+		if strings.HasPrefix(c, "no ip route") {
+			t.Fatalf("removal attempted while DNS unhealthy: %v", fake.cmds)
+		}
+	}
+	if _, ok := d.pins["6.6.6.6"]; !ok {
+		t.Fatalf("B's confirmed pin lost on resolve failure: %v", d.pins)
+	}
+	joined := strings.Join(logs, "\n")
+	if !strings.Contains(joined, "не резолвится") || !strings.Contains(joined, "отложено") {
+		t.Fatalf("expected resolve warn + deferral log, got: %v", logs)
+	}
+}

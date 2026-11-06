@@ -321,6 +321,7 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 
 	want := map[string]bool{}
 	hostsByIP := map[string]string{} // провенанс: какой хост дал этот IP
+	resolveFailed := false           // хоть один хост не резолвится в этом тике
 	for _, h := range d.serverHosts() {
 		if ip := net.ParseIP(h); ip != nil { // literal endpoint: no DNS to follow
 			if v4 := ip.To4(); v4 != nil {
@@ -333,6 +334,7 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 		}
 		ips, err := d.resolveFn(h)
 		if err != nil {
+			resolveFailed = true
 			warn("resolve:"+h, "route-pin: DNS "+h+" не резолвится ("+err.Error()+") — держу текущие пины")
 			continue
 		}
@@ -382,7 +384,17 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 		warn("removals-deferred", "route-pin: есть неподтверждённые добавления — снятие устаревших пинов отложено до следующего тика")
 		return
 	}
+	// Removals also gated on DNS health (wave-2 MAJOR): a host whose resolution
+	// FAILED this tick contributed nothing to want — without this gate its
+	// confirmed pins would be stripped as "stale" while sing-box keeps dialing
+	// them (self-loop class re-opened). Stale pins are direct routes — keeping
+	// them one extra tick is always safe.
+	if resolveFailed {
+		warn("removals-deferred-dns", "route-pin: DNS-неопределённость по части endpoint'ов — снятие устаревших пинов отложено до следующего тика")
+		return
+	}
 	clearWarn("removals-deferred")
+	clearWarn("removals-deferred-dns")
 	for ip := range d.pins {
 		if want[ip] {
 			continue
@@ -398,11 +410,12 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 }
 
 // ndmcFailed reads the ndm CLI's failure surface: errors come back as
-// "[C] ... system failed [0x...]" / "invalid parameters" lines; success for
+// "[C] ... system failed [0x...]" / "invalid parameters"; exec-level failures
+// surface as sh()'s "ERR(...)" prefix (wave-2 review). Success for
 // `ip route` / `no ip route` is silence.
 func ndmcFailed(out string) bool {
 	o := strings.ToLower(out)
-	return strings.Contains(o, "system failed") || strings.Contains(o, "invalid")
+	return strings.Contains(o, "system failed") || strings.Contains(o, "invalid") || strings.Contains(o, "err(")
 }
 
 // ---- tunnel ----

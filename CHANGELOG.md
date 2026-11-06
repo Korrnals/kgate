@@ -26,16 +26,22 @@ follows [Semantic Versioning](https://semver.org/).
   The deploy files-stage no longer overwrites a subscription-managed
   config. URI-list parser is unit-tested (reality/flow/obfs/ss variants).
 
+## [Unreleased]
+
 ### Known limitations
-- ~~KeeneticOS 5.01.C web dashboard renders the Proxy0 connection switch as
-  OFF for connections created/raised via CLI~~ **RESOLVED for kgate ≥ 1.4.3**:
-  root cause found (the switch reads the config-view `show.sc.interface up`
-  node, which for web-touched objects only materializes via an explicit
-  `system configuration save` — kgate now runs it in deploy/destroy).
+- KeeneticOS dashboard switch quirk RESOLVED for ≥ 1.4.3 (deploy/destroy now
+  run `system configuration save` — the config-view up-node materializes).
   ⚠️ Clicking the switch on a live tunnel is NOT a no-op: it writes a `down`
-  intent and SAVES it (observed live: a click took the tunnel down for 33
+  intent and SAVES it to flash (observed: a click took the tunnel down for 33
   minutes with no auto-recovery). Use `kgate toggle off` / `kgate destroy`.
   Full investigation: docs/admin/operations.md.
+
+### Fixed
+- daemon: in multi-host configs a host whose DNS resolution failed for a tick
+  had its confirmed pins stripped as "stale" (wave-2 review) — removals now
+  gated on DNS health, matching the logged promise.
+
+## [1.4.2] - 2026-11-06
 
 ### Fixed
 - deploy: the files stage never clobbers `/opt/etc/ssh/authorized_keys`

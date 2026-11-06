@@ -141,3 +141,120 @@ func TestMergeRewritesRoute(t *testing.T) {
 		t.Fatalf("второй узел потерян")
 	}
 }
+
+// ---- wave-2: hostile-input coverage for the wave-1 hardening ----
+
+func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+
+func TestParseSS_NoAt_NoPanic(t *testing.T) {
+	// wave-1 MAJOR-1: "method:pass" без @ — было паникой (slice [:-1])
+	cases := []string{
+		"ss://" + b64("method:pass") + "#x",
+		"ss://" + b64("m:p@host") + "#x", // без порта
+	}
+	for i, uri := range cases {
+		n, err := parseSS(uri)
+		if err == nil {
+			t.Fatalf("case %d: ожидалась ошибка, получен узел %+v", i, n)
+		}
+	}
+}
+
+func TestParseURIList_HostileLinesErrorNotPanic(t *testing.T) {
+	// wave-1 MAJOR-1 регрессия: мусор в фиде = чистая ошибка (fail-loud),
+	// НИКОГДА паника — скомпрометированный фид не роняет management-тул
+	hostile := []string{
+		"ss://" + b64("method:pass") + "#x",
+		"ss://" + b64("m:p@host") + "#x",
+		"ss://!!!bad-b64!!!",
+		"vless://",
+		"hysteria2://",
+		"trojan://",
+		"not a uri at all",
+		"×«»garbage×«»",
+	}
+	for _, uri := range hostile {
+		nodes, err := parseURIList(uri)
+		if err == nil && len(nodes) == 0 {
+			t.Fatalf("%q: ни ошибки, ни узлов — тихий no-op?", uri)
+		}
+	}
+	list := strings.Join(hostile, "\n")
+	if _, err := Parse([]byte(b64(list))); err == nil {
+		t.Fatal("фид целиком из мусора должен дать чистую ошибку")
+	}
+}
+
+func TestParseSingboxJSON_DuplicateTagsDeduped(t *testing.T) {
+	// wave-1 MAJOR-3: два outbound с одним тегом → дубль валит sing-box
+	j := []byte(`{"outbounds":[
+		{"type":"vless","tag":"proxy","server":"a","server_port":443,"uuid":"u"},
+		{"type":"trojan","tag":"proxy","server":"b","server_port":443,"password":"p"}
+	]}`)
+	nodes, err := parseSingboxJSON(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1 (дубликат отброшен)", len(nodes))
+	}
+}
+
+func TestParseSingboxJSON_PortBoundsAndTypes(t *testing.T) {
+	bad := []byte(`{"outbounds":[{"type":"vless","tag":"p","server":"a","server_port":99999,"uuid":"u"}]}`)
+	if _, err := parseSingboxJSON(bad); err == nil {
+		t.Fatal("99999 прошёл — ожидалась ошибка границ порта")
+	}
+	nonNum := []byte(`{"outbounds":[{"type":"vless","tag":"p","server":"a","server_port":"443","uuid":"u"}]}`)
+	if _, err := parseSingboxJSON(nonNum); err == nil {
+		t.Fatal("строковый server_port прошёл — ожидалась ошибка типа")
+	}
+}
+
+func TestParseSingboxJSON_DanglingDetourDropped(t *testing.T) {
+	// wave-1 MINOR-4: detour на отфильтрованный outbound (selector/пустой тег)
+	j := []byte(`{"outbounds":[
+		{"type":"selector","tag":"sel","outbounds":["x"]},
+		{"type":"vless","tag":"p","server":"a","server_port":443,"uuid":"u","detour":"sel"}
+	]}`)
+	nodes, err := parseSingboxJSON(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range nodes {
+		if _, has := n.Outbound["detour"]; has {
+			t.Fatalf("висячий detour остался: %+v", n.Outbound)
+		}
+	}
+}
+
+func TestMerge_SelectorTagCollisionRenamed(t *testing.T) {
+	// wave-1 MAJOR-2: селектор "sub-proxy" священен — узел с фрагментом
+	// "sub-proxy" коллидирует и переименовывается (дубль тега валит sing-box)
+	nodes := []Node{
+		{Tag: "sub-proxy", Outbound: map[string]any{"type": "vless", "server": "a", "server_port": 443}},
+		{Tag: "proxy", Outbound: map[string]any{"type": "trojan", "server": "b", "server_port": 443}},
+	}
+	out, err := Merge([]byte(`{"outbounds":[{"type":"hysteria2","tag":"hy2-out","server":"s","server_port":1}],"route":{"rules":[{"outbound":"hy2-out"}]}}`), nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	tags := map[string]int{}
+	for _, ob := range cfg["outbounds"].([]any) {
+		m := ob.(map[string]any)
+		tags[m["tag"].(string)]++
+	}
+	if tags[selectorTag] != 1 {
+		t.Fatalf("селектор задублирован: %v", tags)
+	}
+	if tags["sub-proxy-2"] != 1 {
+		t.Fatalf("коллидирующий узел не переименован в sub-proxy-2: %v", tags)
+	}
+	if tags["proxy"] != 1 {
+		t.Fatalf("обычный узел 'proxy' должен сохранить тег: %v", tags)
+	}
+}
