@@ -19,6 +19,10 @@ type Config struct {
 	SSHUser  string `yaml:"ssh_user"`
 	SSHKey   string `yaml:"ssh_key"`
 
+	Subscription struct {
+		URL string `yaml:"url"` // провайдер подписки (см. kgate subscribe)
+	} `yaml:"subscription"`
+
 	API struct {
 		Port int    `yaml:"port"` // daemon mTLS API port on the router
 		CA   string `yaml:"ca"`   // local client cert paths
@@ -181,6 +185,7 @@ func applyEnv(c *Config) {
 	}
 
 	envStr("KGATE_HOST", &c.Host)
+	envStr("KGATE_SUBSCRIBE_URL", &c.Subscription.URL)
 	envStr("KGATE_SERVER_IP", &c.ServerIP)
 	envInt("KGATE_SSH_PORT", &c.SSHPort)
 	envStr("KGATE_SSH_USER", &c.SSHUser)

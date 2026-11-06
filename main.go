@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"kgate/internal/daemon"
 	"kgate/internal/deploy"
 	"kgate/internal/model"
+	"kgate/internal/subscribe"
 	"kgate/internal/update"
 
 	"github.com/spf13/cobra"
@@ -31,6 +33,9 @@ var assumeYes bool
 //
 //go:embed examples/kgate.yaml.example
 var configTemplate []byte
+
+//go:embed examples/etc/sing-box/config.json
+var subscribeSkeleton []byte
 
 // manPage is the kgate(1) roff source; `kgate man` renders it through man(1)
 // when available.
@@ -343,6 +348,104 @@ func main() {
 		},
 	}
 	root.AddCommand(manCmd)
+
+	homeDir, _ := os.UserHomeDir()
+	subStatePath := filepath.Join(homeDir, "subscribe.json")
+	readSubState := func() map[string]any {
+		b, err := os.ReadFile(subStatePath)
+		if err != nil {
+			return nil
+		}
+		var m map[string]any
+		if json.Unmarshal(b, &m) != nil {
+			return nil
+		}
+		return m
+	}
+
+	subscribeCmd := &cobra.Command{
+		Use:   "subscribe",
+		Short: "подписка: узлы провайдера вместо статического конфига (vless/hysteria2/trojan/ss, sing-box JSON)",
+	}
+	applySubscription := func(c *model.Config, url string) error {
+		payload, err := subscribe.Fetch(url)
+		if err != nil {
+			return fmt.Errorf("подписка недоступна: %w", err)
+		}
+		nodes, err := subscribe.Parse(payload)
+		if err != nil {
+			return fmt.Errorf("разбор подписки: %w", err)
+		}
+		merged, err := subscribe.Merge(subscribeSkeleton, nodes)
+		if err != nil {
+			return err
+		}
+		tags := make([]string, len(nodes))
+		for i, n := range nodes {
+			tags[i] = n.Tag
+		}
+		state, _ := json.MarshalIndent(map[string]any{
+			"url": url, "updated_at": time.Now().UTC().Format(time.RFC3339), "nodes": tags,
+		}, "", "  ")
+		if err := os.WriteFile(subStatePath, state, 0o600); err != nil {
+			return err
+		}
+		r := deploy.New(c, dryRun)
+		fmt.Printf("узлов: %d — применяю на роутер…\n", len(nodes))
+		r.PushConfig(merged)
+		fmt.Println("готово: конфиг подписки установлен; проверь: kgate verify")
+		return nil
+	}
+	subAdd := &cobra.Command{
+		Use:   "add <url>",
+		Args:  cobra.ExactArgs(1),
+		Short: "добавить подписку, применить узлы на роутер",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return applySubscription(load(), args[0])
+		},
+	}
+	subUpdate := &cobra.Command{
+		Use:   "update",
+		Short: "перечитать подписку и применить заново",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st := readSubState()
+			u, _ := st["url"].(string)
+			if u == "" {
+				u = load().Subscription.URL
+			}
+			if u == "" {
+				return fmt.Errorf("подписка не добавлена: kgate subscribe add <url>")
+			}
+			return applySubscription(load(), u)
+		},
+	}
+	subRemove := &cobra.Command{
+		Use:   "remove",
+		Short: "убрать подписку (конфиг вернётся из payload: kgate deploy --only files)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			os.Remove(subStatePath)
+			fmt.Println("подписка удалена из ~/.kgate/subscribe.json;")
+			fmt.Println("вернуть статический конфиг на роутер: rm /opt/etc/sing-box/config.json && kgate deploy --only files")
+			return nil
+		},
+	}
+	subStatus := &cobra.Command{
+		Use: "status", Short: "статус подписки",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st := readSubState()
+			if st == nil {
+				fmt.Println("подписка не настроена")
+				return nil
+			}
+			b, _ := json.MarshalIndent(st, "", "  ")
+			fmt.Println(string(b))
+			return nil
+		},
+	}
+	for _, c := range []*cobra.Command{subAdd, subUpdate, subRemove, subStatus} {
+		subscribeCmd.AddCommand(c)
+	}
+	root.AddCommand(subscribeCmd)
 
 	root.AddCommand(configCmd())
 

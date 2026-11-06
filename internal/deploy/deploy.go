@@ -152,7 +152,9 @@ mv -f sing-box /opt/sbin/sing-box
 mv -f ndm-commands.sh /opt/etc/ndm-commands.sh
 mv -f S99kgate /opt/etc/init.d/S99kgate
 mkdir -p /opt/etc/sing-box/rulesets
-cp -f root/opt/etc/sing-box/config.json /opt/etc/sing-box/config.json
+# sing-box конфиг: НЕ перетираем существующий (им может управлять kgate subscribe
+# или руки оператора); на чистом роутере кладём шаблон из payload
+if [ -s /opt/etc/sing-box/config.json ]; then echo "config.json: сохранён (существующий/подписочный)"; else cp -f root/opt/etc/sing-box/config.json /opt/etc/sing-box/config.json; fi
 cp -f root/opt/etc/sing-box/rulesets/*.srs /opt/etc/sing-box/rulesets/ 2>/dev/null
 cp -f root/opt/etc/ssh/authorized_keys /opt/etc/ssh/authorized_keys.new
 grep -q "^sshd:" /opt/etc/passwd || cat root/opt/etc/passwd >> /opt/etc/passwd
@@ -225,6 +227,13 @@ func (r *Runner) Services() {
 }
 
 // ---- destroy ----
+
+// PushConfig uploads a generated sing-box config (subscription mode) and
+// restarts the stack.
+func (r *Runner) PushConfig(merged []byte) {
+	r.upload(merged, `cat > /opt/etc/sing-box/config.json`, "установка конфига подписки")
+	r.step("рестарт sing-box (S99kgate)", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
+}
 
 // Destroy undoes the deploy (the mechanical part — confirmation happens in
 // main.go): stop the service, remove the stack files, delete the ndm objects

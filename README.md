@@ -28,7 +28,7 @@
 | Туннель | **hysteria2** (± obfs salamander) до **своего/предоставленного** сервера (sing-box/hysteria2, TLS на домен); пароль, не подписки |
 | Локально | SOCKS5 `:1080`/`1090`, redirect `:1081`; RU-сплит (geosite/geoip в комплекте); тумблер Proxy0 + per-device политики |
 
-**Нет из коробки:** подписки (subscription-URL), другие протоколы (vless/trojan/ss/wg — движок умеет, kgate не конфигурирует), режим сервера, нативная карточка в веб-UI.
+**Поддерживается:** hysteria2 и подписки (vless/hysteria2/trojan/ss, sing-box JSON). **Нет из коробки:** wireguard/tuic/vmess-парсинг, режим сервера, нативная карточка в веб-UI.
 
 Полная матрица и self-check — [docs/admin/requirements.md](docs/admin/requirements.md).
 

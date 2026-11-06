@@ -15,6 +15,15 @@ follows [Semantic Versioning](https://semver.org/).
   firmware ssh+SFTP (port 22, KeeneticOS admin user, default `temp`)
   for the case when the Entware keys file is clobbered/missing.
 
+### Added
+- subscriptions: `kgate subscribe add|update|remove|status` — provider
+  subscriptions (base64 URI lists with vless incl. Reality/flow,
+  hysteria2, trojan, shadowsocks — or a ready sing-box JSON) are parsed
+  into sing-box outbounds, wrapped with a selector, and applied to the
+  router while kgate's own inbounds and RU-split routing stay intact.
+  The deploy files-stage no longer overwrites a subscription-managed
+  config. URI-list parser is unit-tested (reality/flow/obfs/ss variants).
+
 ### Fixed
 - deploy: the files stage never clobbers `/opt/etc/ssh/authorized_keys`
   anymore — release payloads carry a sanitized placeholder key, and the
