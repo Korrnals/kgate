@@ -244,7 +244,15 @@ func (r *Runner) Services() {
 	fmt.Println("→ deploy: services")
 	// stop+start, не restart: у S99, развёрнутого старыми версиями kgate,
 	// restart-кейса нет — --only services обязан работать с любой генерацией скрипта
-	r.step("S99kgate stop+start + статус демона", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1; /opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
+	// kgate-1.4.4: принудительно свежий sing-box — живой старый процесс
+	// (переживший killall) больше НЕ усыновляется свежим демоном: перед
+	// стартом демона глушим движки и чистим их pidfiles, иначе конфиги,
+	// заменённые files-стадией, не вступают в силу
+	r.step("S99kgate stop + свежий движок + start + статус", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1
+killall -9 sing-box xray 2>/dev/null
+rm -f /opt/var/run/kgate-singbox.pid /opt/var/run/kgate-xray.pid /opt/var/run/singbox.pid
+sleep 1
+/opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
 }
 
 // ---- destroy ----
@@ -308,6 +316,21 @@ func (r *Runner) Destroy() {
 if opkg list-installed | grep -q "^kgate "; then opkg remove kgate; fi
 killall kgate sing-box 2>/dev/null
 echo "stack stopped"`)
+	// kgate-1.4.4: killall НЕ гарантирован (поймано 06.11: sing-box пережил
+	// destroy с удалёнными из-под него бинарём и конфигом и обслуживал дом
+	// сутки). Эскалация до -9 и ГРОМКИЙ ассерт смерти — тихий выживший =
+	// источник флапов и рассинхрона конфигов.
+	r.step("процессы мертвы (assert, SIGKILL-эскалация)", `i=0
+while [ $i -lt 10 ]; do
+  P=$(ps w | grep -E "[s]ing-box|[k]gate serve" | wc -l)
+  [ "$P" -eq 0 ] && break
+  killall -9 kgate sing-box 2>/dev/null
+  sleep 1
+  i=$((i+1))
+done
+P=$(ps w | grep -E "[s]ing-box|[k]gate serve" | wc -l)
+[ "$P" -eq 0 ] || { echo "FAILED: пережили killall: $P процессов"; exit 1; }
+echo "processes dead"`)
 
 	fmt.Println("→ destroy: файлы стека")
 	r.step("удаление бинарей, init-скрипта, конфигов и логов", `rm -f  /opt/etc/init.d/S99kgate /opt/etc/init.d/S99kgate.disabled

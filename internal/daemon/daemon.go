@@ -440,11 +440,38 @@ func ndmcFailed(out string) bool {
 // ---- tunnel ----
 
 func (d *Daemon) toggle(state string) string {
-	return d.ndmc("interface Proxy0 " + state)
+	return d.ndm("interface Proxy0 " + state)
+}
+
+// scIntentUp reads the PERSISTED switch intent from the config view
+// (show sc interface Proxy0 → "up: yes"). The web toggle writes it directly;
+// CLI up/down does NOT change it (troubleshoot 06.11: the node survives CLI
+// cycles — only an explicit save syncs it). It is therefore the authoritative
+// "owner wanted the tunnel" signal, distinct from the runtime state.
+func (d *Daemon) scIntentUp() bool {
+	out := d.ndm("show sc interface Proxy0")
+	return strings.Contains(out, "up: yes")
+}
+
+// flapSelfHeal (kgate-1.4.4): a sing-box hiccup (hy2 re-handshake, server
+// failover) can drop Proxy0 while the SAVED intent is still "up" — and Proxy0
+// is the house default route, so everything loses connectivity until someone
+// raises it by hand. Re-raise on tick when the intent says up; a deliberate
+// OFF (web click or `kgate toggle off` — both persist intent=down) is
+// respected: no fight with the owner.
+func (d *Daemon) flapSelfHeal(logger func(string)) {
+	if !strings.Contains(d.proxyState(), "state: down") {
+		return
+	}
+	if !d.scIntentUp() {
+		return // intent down — the owner (or toggle) wanted it off
+	}
+	d.toggle("up")
+	logger("supervisor: Proxy0 упал при intent=up — поднимаю (flap self-heal)")
 }
 
 func (d *Daemon) proxyState() string {
-	out := d.ndmc("show interface Proxy0")
+	out := d.ndm("show interface Proxy0")
 	for _, l := range strings.Split(out, "\n") {
 		if strings.Contains(l, "state:") {
 			return strings.TrimSpace(l)
@@ -604,6 +631,7 @@ func (d *Daemon) Run() error {
 			for _, l := range d.mgr.ensure() {
 				logger("supervisor: " + l)
 			}
+			d.flapSelfHeal(logger)
 			d.syncServerPin(logger)
 			if !d.iptablesOK() {
 				logger("supervisor: dns-rules снесены — восстанавливаю")
@@ -652,7 +680,12 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 		}
 		verb := map[string]string{"on": "up", "off": "down"}[in.State]
 		out := d.toggle(verb)
-		time.Sleep(6 * time.Second)
+		// persist the intent (kgate-1.4.4): CLI down/up does not update the sc
+		// view by itself — the save makes the intent authoritative for the
+		// auto-raise guard AND keeps the dashboard switch truthful
+		time.Sleep(1 * time.Second)
+		_ = d.ndm("system configuration save")
+		time.Sleep(5 * time.Second)
 		json.NewEncoder(w).Encode(map[string]string{"ndmc": out, "proxy0": d.proxyState()})
 	})
 	mux.HandleFunc("/api/v1/ruexit", func(w http.ResponseWriter, r *http.Request) {

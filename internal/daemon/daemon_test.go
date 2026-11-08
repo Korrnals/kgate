@@ -15,14 +15,20 @@ import (
 // fakeNDM records ndmc commands; failOn marks commands whose output mimics
 // the ndm failure surface ("system failed").
 type fakeNDM struct {
-	cmds   []string
-	failOn map[string]bool
+	cmds      []string
+	failOn    map[string]bool
+	responses map[string]string // scripted replies for show-commands
 }
 
 func (f *fakeNDM) run(cmd string) string {
 	f.cmds = append(f.cmds, cmd)
 	if f.failOn[cmd] {
 		return "[C] ndm: Cli::Main: system failed [0xcffd00d9]"
+	}
+	if f.responses != nil {
+		if r, ok := f.responses[cmd]; ok {
+			return r
+		}
 	}
 	return ""
 }
@@ -428,5 +434,54 @@ func TestSyncPin_AAAAOnly_KeepsConfirmedPins(t *testing.T) {
 	d.syncServerPin(func(string) {}) // tick 2: A стал AAAA-only
 	if _, ok := d.pins["5.5.5.5"]; !ok {
 		t.Fatalf("AAAA-only флип срезал подтверждённый пин A: %v", d.pins)
+	}
+}
+
+func TestFlapSelfHeal_IntentUp_Reraises(t *testing.T) {
+	// kgate-1.4.4: Proxy0 down + saved intent up → re-raise (house default route)
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	fake.responses = map[string]string{
+		"show interface Proxy0":    "        state: down\n     connected: no",
+		"show sc interface Proxy0": "config, name = up, final = yes:\n                       up: yes",
+	}
+	var logs []string
+	d.flapSelfHeal(func(s string) { logs = append(logs, s) })
+	found := false
+	for _, c := range fake.cmds {
+		if c == "interface Proxy0 up" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("re-raise не выполнен: %v; logs=%v", fake.cmds, logs)
+	}
+}
+
+func TestFlapSelfHeal_IntentDown_Respected(t *testing.T) {
+	// владелец/kgate toggle off сохранил intent down — ре-райза НЕТ
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	fake.responses = map[string]string{
+		"show interface Proxy0":    "        state: down\n     connected: no",
+		"show sc interface Proxy0": "config, name = up, final = yes:\n                       up: no",
+	}
+	d.flapSelfHeal(func(string) {})
+	for _, c := range fake.cmds {
+		if c == "interface Proxy0 up" {
+			t.Fatalf("ре-райз вопреки intent=down: %v", fake.cmds)
+		}
+	}
+}
+
+func TestFlapSelfHeal_Up_Noop(t *testing.T) {
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	fake.responses = map[string]string{
+		"show interface Proxy0": "        state: up\n     connected: yes",
+	}
+	before := len(fake.cmds)
+	d.flapSelfHeal(func(string) {})
+	for _, c := range fake.cmds[before:] {
+		if c != "show interface Proxy0" { // health-check разрешён, тоггл — нет
+			t.Fatalf("лишняя команда при поднятом туннеле: %v", fake.cmds[before:])
+		}
 	}
 }
