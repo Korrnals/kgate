@@ -1,0 +1,14 @@
+#!/bin/sh
+# kgate: re-apply tunnel-endpoint route pins when an interface comes up.
+# The WAN gateway may change on reconnect (DHCP renew, pppoe re-dial); the
+# shim's `kgate reapply` replaces every pinned /32 with the CURRENT default
+# gateway and refreshes the frozen uci gateway values — ndm-equivalent
+# behaviour (the pin object survives reconnects).
+# Installed to /etc/hotplug.d/iface/50-kgate-pins by install.sh.
+
+[ "$ACTION" = "ifup" ] || exit 0
+[ -x /usr/bin/ndmc ] || exit 0
+[ -f /etc/kgate/routes ] || exit 0
+
+/usr/bin/ndmc -c "kgate reapply" >/dev/null 2>&1 &
+exit 0

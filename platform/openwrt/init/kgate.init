@@ -1,0 +1,83 @@
+#!/bin/sh /etc/rc.common
+# shellcheck disable=SC2034  # START/STOP/USE_PROCD/NAME are consumed by rc.common
+# kgate — procd init (OpenWrt Phase 1, beta).
+#
+# procd supervises THE DAEMON only; sing-box is supervised by the daemon
+# itself (procManager: restart with backoff, inherited RLIMIT_NOFILE,
+# pidfile /var/run/kgate-singbox.pid — see internal/daemon/daemon.go).
+# Mirrors the Keenetic S99kgate contract:
+#   stop ALWAYS lowers the tunnel first (house stays on direct provider access);
+#   boot restores the switch from the operator intent file;
+#   pins are netifd's job at boot (uci static routes written by the shim),
+#   re-asserted in-kernel by `kgate reapply` below and by the hotplug hook.
+#
+# Installed to /etc/init.d/kgate by install.sh --platform=openwrt, then
+# `/etc/init.d/kgate enable`.
+
+START=99
+STOP=15
+USE_PROCD=1
+
+NAME=kgate
+BIN=/usr/bin/kgate
+NDMC=/usr/bin/ndmc
+CFG=/etc/kgate/kgate.yaml
+INTENT=/opt/etc/kgate/intent
+
+boot_restore() {
+	# switch: the intent file is daemon-owned ("down" = operator off, written
+	# by kgate toggle off; anything else = deploy default up). The shim's
+	# up/down verbs never touch it, so a reboot can never resurrect an
+	# operator-disabled tunnel — same semantics as KeeneticOS.
+	intent=$(cat "$INTENT" 2>/dev/null)
+	if [ "$intent" = "down" ]; then
+		$NDMC -c "interface Proxy0 down" >/dev/null 2>&1
+	else
+		$NDMC -c "interface Proxy0 up" >/dev/null 2>&1
+	fi
+	# pins: netifd applies the uci route sections during wan setup; re-assert
+	# the in-kernel routes too (idempotent, heals a stale frozen gateway)
+	$NDMC -c "kgate reapply" >/dev/null 2>&1
+}
+
+start_service() {
+	if [ ! -f "$CFG" ]; then
+		echo "kgate: нет $CFG — установка не завершена (install.sh --platform=openwrt); старт пропущен"
+		return 1
+	fi
+	if [ ! -f /etc/kgate/ca.crt ] || [ ! -f /etc/kgate/server.crt ]; then
+		echo "kgate: нет mTLS-сертификатов в /etc/kgate — сгенерируй на ноутбуке (kgate certs) и разложи ca.crt/server.crt/server.key; старт пропущен"
+		return 1
+	fi
+	command -v "$NDMC" >/dev/null 2>&1 || {
+		echo "kgate: $NDMC (ndm-shim) не найден — установка не завершена; старт пропущен"
+		return 1
+	}
+	mkdir -p /var/log
+	boot_restore
+	procd_open_instance
+	procd_set_param command "$BIN" serve -c "$CFG"
+	procd_set_param pidfile /var/run/kgate.pid
+	procd_set_param respawn 3600 5 5
+	procd_set_param env HOME=/ TERM=linux
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+stop_service() {
+	# Keenetic contract: остановка ВСЕГДА опускает туннель до остановки демона
+	command -v "$NDMC" >/dev/null 2>&1 && $NDMC -c "interface Proxy0 down" >/dev/null 2>&1
+	killall sing-box 2>/dev/null
+	rm -f /var/run/kgate-singbox.pid
+}
+
+extra_command "stack" "статус: демон + sing-box + туннель + пины"
+stack() {
+	echo "kgate daemon: $(pidof kgate 2>/dev/null || echo dead)"
+	echo "sing-box:     $(pidof sing-box 2>/dev/null || echo dead)"
+	if command -v "$NDMC" >/dev/null 2>&1; then
+		$NDMC -c "show interface Proxy0" 2>/dev/null
+		echo "pins: $($NDMC -c "show ip route" 2>/dev/null | grep -cE "/32 .*ISP")"
+	fi
+}
