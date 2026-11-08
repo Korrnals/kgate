@@ -252,7 +252,16 @@ func (r *Runner) Services() {
 killall -9 sing-box xray 2>/dev/null
 rm -f /opt/var/run/kgate-singbox.pid /opt/var/run/kgate-xray.pid /opt/var/run/singbox.pid
 sleep 1
-/opt/etc/init.d/S99kgate start; sleep 4; /opt/etc/init.d/S99kgate status`)
+/opt/etc/init.d/S99kgate start
+# poll вместо фиксированного sleep: свежий движок инициализируется дольше 4с
+# (поймано в поле на v1.4.4: status на +4с падал, стек при этом поднимался)
+i=0
+while [ $i -lt 20 ]; do
+  /opt/etc/init.d/S99kgate status >/dev/null 2>&1 && break
+  sleep 1
+  i=$((i+1))
+done
+/opt/etc/init.d/S99kgate status`)
 }
 
 // ---- destroy ----

@@ -6,6 +6,13 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-11-08
+
+### Fixed
+- deploy services: status poll (up to 20s) instead of a fixed 4s sleep — a
+  fresh engine initializes longer, and the fixed wait raced it into a false
+  FAIL (caught in the field on v1.4.4 immediately after deploy).
+
 ## [1.4.4] - 2026-11-07
 
 ### Fixed
