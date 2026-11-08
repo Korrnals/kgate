@@ -237,7 +237,8 @@ func (r *Runner) NDM() {
 	// тумблер в дашборде рисует OFF при рабочем туннеле (см. investigate:
 	// kgate-session-reports/tumbler-verdict.md). Save также фиксирует intent
 	// "up" во flash — после ребута ОС уважает его.
-	r.step("system configuration save (веб-модель тумблера + intent up)", `ndmc -c "system configuration save" && echo saved`)
+	r.step("system configuration save (веб-модель тумблера + intent up)", `ndmc -c "system configuration save" && echo saved
+mkdir -p /opt/etc/kgate && echo up > /opt/etc/kgate/intent`)
 }
 
 func (r *Runner) Services() {

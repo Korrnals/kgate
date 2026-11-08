@@ -33,10 +33,11 @@ type Daemon struct {
 	// route-pin: источник истины — фактический `show ip route`; pins содержит
 	// только пины, которые мы сами подтвердили (ip → хост-владелец из конфига;
 	// "" = seed ServerIP от deploy до первой сверки)
-	pins      map[string]string
-	pinWarned map[string]bool                // log-once: аномалии пина молчат не дольше одного состояния
-	ndmcFn    func(string) string            // seam для тестов: подмена ndm CLI
-	resolveFn func(string) ([]net.IP, error) // seam для тестов: подмена резолвера
+	pins       map[string]string
+	pinWarned  map[string]bool                // log-once: аномалии пина молчат не дольше одного состояния
+	ndmcFn     func(string) string            // seam для тестов: подмена ndm CLI
+	resolveFn  func(string) ([]net.IP, error) // seam для тестов: подмена резолвера
+	intentPath string                         // seam для тестов: путь intent-файла ("" = дефолт)
 }
 
 func New(cfg *model.Config) *Daemon {
@@ -453,18 +454,41 @@ func (d *Daemon) scIntentUp() bool {
 	return strings.Contains(out, "up: yes")
 }
 
-// flapSelfHeal (kgate-1.4.4): a sing-box hiccup (hy2 re-handshake, server
-// failover) can drop Proxy0 while the SAVED intent is still "up" — and Proxy0
-// is the house default route, so everything loses connectivity until someone
-// raises it by hand. Re-raise on tick when the intent says up; a deliberate
-// OFF (web click or `kgate toggle off` — both persist intent=down) is
-// respected: no fight with the owner.
+// intentPath holds the OPERATOR intent for the tunnel switch ("up"/"down").
+// The sc view cannot serve this role: it mirrors the live state (an interface
+// down → the up-node vanishes), so "owner turned it off" and "flap" are
+// indistinguishable there. kgate toggle on/off writes this file; the web
+// switch does NOT — a web click (which writes a raw down to a live tunnel)
+// is overridden by flapSelfHeal within one tick. This is deliberate: the
+// off-switch is `kgate toggle off`, documented in operations.md.
+const defaultIntentPath = "/opt/etc/kgate/intent"
+
+func (d *Daemon) intentDown() bool {
+	b, err := os.ReadFile(d.intentFile())
+	if err != nil {
+		return false // no file = no explicit off → default up (deploy intent)
+	}
+	return strings.TrimSpace(string(b)) == "down"
+}
+
+func (d *Daemon) intentFile() string {
+	if d.intentPath != "" {
+		return d.intentPath
+	}
+	return defaultIntentPath
+}
+
+// flapSelfHeal (kgate-1.4.4/1.4.6): a sing-box hiccup (hy2 re-handshake,
+// server failover) can drop Proxy0 — and Proxy0 is the house default route,
+// so everything loses connectivity until someone raises it by hand.
+// Re-raise on tick unless the operator intent file says "down" (written by
+// `kgate toggle off` only). The web switch cannot produce a lasting off.
 func (d *Daemon) flapSelfHeal(logger func(string)) {
 	if !strings.Contains(d.proxyState(), "state: down") {
 		return
 	}
-	if !d.scIntentUp() {
-		return // intent down — the owner (or toggle) wanted it off
+	if d.intentDown() {
+		return // operator intent: off (kgate toggle off)
 	}
 	d.toggle("up")
 	logger("supervisor: Proxy0 упал при intent=up — поднимаю (flap self-heal)")
@@ -680,9 +704,10 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 		}
 		verb := map[string]string{"on": "up", "off": "down"}[in.State]
 		out := d.toggle(verb)
-		// persist the intent (kgate-1.4.4): CLI down/up does not update the sc
-		// view by itself — the save makes the intent authoritative for the
-		// auto-raise guard AND keeps the dashboard switch truthful
+		// operator intent file: the ONLY off-switch the self-heal respects
+		// (kgate-1.4.6). /opt/etc/kgate survives reboots without ndm save.
+		_ = os.WriteFile(d.intentFile(), []byte(strings.ToLower(in.State)+"\n"), 0644)
+		// keep the sc view/dashboard switch truthful for on-toggles
 		time.Sleep(1 * time.Second)
 		_ = d.ndm("system configuration save")
 		time.Sleep(5 * time.Second)

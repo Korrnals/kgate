@@ -438,11 +438,11 @@ func TestSyncPin_AAAAOnly_KeepsConfirmedPins(t *testing.T) {
 }
 
 func TestFlapSelfHeal_IntentUp_Reraises(t *testing.T) {
-	// kgate-1.4.4: Proxy0 down + saved intent up → re-raise (house default route)
+	// kgate-1.4.6: Proxy0 down + intent file "up" (or absent) → re-raise
 	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "intent")
 	fake.responses = map[string]string{
-		"show interface Proxy0":    "        state: down\n     connected: no",
-		"show sc interface Proxy0": "config, name = up, final = yes:\n                       up: yes",
+		"show interface Proxy0": "        state: down\n     connected: no",
 	}
 	var logs []string
 	d.flapSelfHeal(func(s string) { logs = append(logs, s) })
@@ -453,16 +453,32 @@ func TestFlapSelfHeal_IntentUp_Reraises(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("re-raise не выполнен: %v; logs=%v", fake.cmds, logs)
+		t.Fatalf("re-raise не выполнен (intent отсутствует = up): %v; logs=%v", fake.cmds, logs)
+	}
+	_ = logs
+
+	// intent=up явно → тоже ре-райз
+	os.WriteFile(d.intentPath, []byte("up\n"), 0644)
+	fake.cmds = nil
+	d.flapSelfHeal(func(string) {})
+	found = false
+	for _, c := range fake.cmds {
+		if c == "interface Proxy0 up" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("re-raise не выполнен (intent=up): %v", fake.cmds)
 	}
 }
 
 func TestFlapSelfHeal_IntentDown_Respected(t *testing.T) {
-	// владелец/kgate toggle off сохранил intent down — ре-райза НЕТ
+	// kgate toggle off записал intent=down — ре-райза НЕТ
 	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "intent")
+	os.WriteFile(d.intentPath, []byte("down\n"), 0644)
 	fake.responses = map[string]string{
-		"show interface Proxy0":    "        state: down\n     connected: no",
-		"show sc interface Proxy0": "config, name = up, final = yes:\n                       up: no",
+		"show interface Proxy0": "        state: down\n     connected: no",
 	}
 	d.flapSelfHeal(func(string) {})
 	for _, c := range fake.cmds {
@@ -474,6 +490,7 @@ func TestFlapSelfHeal_IntentDown_Respected(t *testing.T) {
 
 func TestFlapSelfHeal_Up_Noop(t *testing.T) {
 	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "intent")
 	fake.responses = map[string]string{
 		"show interface Proxy0": "        state: up\n     connected: yes",
 	}
