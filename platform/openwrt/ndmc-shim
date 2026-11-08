@@ -1,0 +1,362 @@
+#!/bin/sh
+# ndmc — OpenWrt shim for the KeeneticOS ndm CLI (kgate Phase 1, beta).
+#
+# The kgate daemon (internal/daemon) speaks the ndm command dialect through the
+# hardcoded /bin/ndmc -c "<cmd>". On OpenWrt this shim translates the SAME
+# verbs to uci/ip/nft operations, so the Go daemon runs UNMODIFIED:
+#
+#   show interface Proxy0     -> "        state: <up|down>" + "     connected: <yes|no>"
+#                                (runtime truth: the nft table inet kgate exists = up;
+#                                 connected = sing-box :1080 accepting (procfs LISTEN check))
+#   show sc interface Proxy0  -> "            up: yes|no" (PERSISTED intent:
+#                                /opt/etc/kgate/intent == "down" means no; mirrors
+#                                the daemon's intentDown() parsing exactly)
+#   interface Proxy0 up|down  -> nft table inet kgate create/delete (RUNTIME only,
+#                                never touches the intent file — same contract as
+#                                Keenetic: CLI up/down does not change the saved view)
+#   show ip route             -> kernel-truth rendering: the default route plus every
+#                                /32 route pinned through the WAN (lines start with
+#                                "<ip>/32" and contain "ISP" — the daemon counts pins
+#                                via grep -E "/32 .*ISP", destroy sweeps them anchored)
+#   ip route <ip> ISP         -> ip route replace <ip>/32 via <wan-gw> dev <wan-if>
+#                                (endpoint traffic forced direct), verified in-kernel,
+#                                then recorded to /etc/kgate/routes AND as a netifd
+#                                static route (uci network route section, so pins
+#                                survive reboot and WAN reconnects — ndm semantics)
+#   no ip route <ip> ISP      -> ip route del + file entry + uci section removal (idempotent)
+#   show running-config       -> the kgate-managed state rendered in ndm dialect:
+#                                literal tokens "interface Proxy0", "ip policy VPN-TV",
+#                                "VPN-Laptops-Phones", "DIRECT-NOVPN" appear ONLY while
+#                                the corresponding state exists, so the existing
+#                                destroy cleanliness grep (Proxy0|VPN-TV|...) works unchanged
+#   system configuration save -> reconcile: re-apply every pinned route with the CURRENT
+#                                wan dev/gw, upsert uci sections, uci commit (pins/state
+#                                persistence; the switch intent is daemon-owned — never
+#                                touched here, web-click semantics stay intact)
+#   system reboot             -> /sbin/reboot
+#   no interface Proxy0       -> runtime down (destroy surface completeness)
+#   no ip policy <name>       -> drop the policy state file if any (Phase 2 stub)
+#   kgate reapply             -> internal (not an ndm verb): re-apply pins with the
+#                                current wan dev/gw; called by the procd init at boot
+#                                and by the hotplug hook on WAN ifup
+#
+# Unknown verbs fail with "system failed [0xkgate: ...]" + exit 1: the daemon's
+# ndmcFailed() reads exactly that surface and retries on the next tick.
+#
+# Phase-1 honesty (see docs/admin/install.md): the traffic path (tproxy/nft marks
+# for LAN clients) lands in Phase 2 — the table inet kgate is a state marker only,
+# with no redirect rules, so up/down never blackholes the LAN.
+#
+# Requirements: OpenWrt 23.05+ (nftables/fw4, uci, busybox ip). Recommended:
+# iptables-nft + ip6tables-nft (the daemon applies its SBREDIRECT DNS-DNAT through
+# /opt/sbin/iptables symlinks installed by install.sh), ip-full, ca-bundle.
+# POSIX sh; no bash. Installed as /usr/bin/ndmc with a /bin/ndmc symlink.
+
+STATE_DIR="${KGATE_STATE_DIR:-/etc/kgate}"            # test seam: KGATE_STATE_DIR
+ROUTES_FILE="$STATE_DIR/routes"
+WAN_IF_FILE="$STATE_DIR/wan-if"          # optional override: uci logical name for pin routes
+INTENT_FILE="${KGATE_INTENT_FILE:-/opt/etc/kgate/intent}"      # daemon-owned (via /opt/etc/kgate -> /etc/kgate)
+LOG_FILE="${KGATE_LOG_FILE:-/var/log/kgate-ndmc.log}"       # tmpfs: diagnostics live until reboot
+SB_PORT=1080                             # sing-box mixed inbound (procfs hex check below)
+
+# ---- plumbing ----------------------------------------------------------------
+
+log() {
+	[ -f "$LOG_FILE" ] && [ "$(wc -c < "$LOG_FILE" 2>/dev/null)" -gt 102400 ] && : > "$LOG_FILE"
+	echo "$(date '+%b %d %H:%M:%S') ndmc-shim: $*" >> "$LOG_FILE" 2>/dev/null
+}
+
+fail() {
+	log "FAIL: $*"
+	echo "system failed [0xkgate: $*]"
+	exit 1
+}
+
+# wan_dev: the device of the default route ("" when wan is down)
+wan_dev() {
+	ip route show 2>/dev/null | awk '$1=="default"{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}'
+}
+
+# wan_gw: the gateway of the default route ("" for point-to-point wan, e.g. pppoe)
+wan_gw() {
+	ip route show 2>/dev/null | awk '$1=="default" && $2=="via"{print $3; exit}'
+}
+
+# uci_wan_if: the uci logical interface name for the wan device.
+# Resolution: /etc/kgate/wan-if override, else the network section whose device
+# matches the default-route device, else the plain "wan" section, else "wan".
+uci_wan_if() {
+	dev="$1"
+	if [ -r "$WAN_IF_FILE" ]; then
+		if_=$(tr -d ' \t\n' < "$WAN_IF_FILE")
+		[ -n "$if_" ] && { echo "$if_"; return 0; }
+	fi
+	res=$(uci -q show network 2>/dev/null | awk -F. -v d="$dev" \
+		'$3 ~ /^device/ {v=$4; gsub(/'"'"'/,"",v); if (v==d) {print $2; exit}}')
+	[ -n "$res" ] && { echo "$res"; return 0; }
+	uci -q show network.wan >/dev/null 2>&1 && { echo "wan"; return 0; }
+	echo "wan"
+}
+
+# valid_ip: boundary sanity — the daemon only sends parsed dotted quads,
+# but the shim is also operator-reachable over ssh.
+valid_ip() {
+	case "$1" in
+		*[!0-9.]*) return 1 ;;
+	esac
+	printf '%s' "$1" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
+}
+
+# route_replace: replace-or-add the pinned /32 with the CURRENT wan dev/gw.
+# busybox ip may lack `replace` — fall back to del+add.
+route_replace() {
+	ip_="$1"; dev="$2"; gw="$3"
+	if [ -n "$gw" ]; then
+		if ip route replace "$ip_/32" via "$gw" dev "$dev" 2>/dev/null; then return 0; fi
+		ip route del "$ip_/32" 2>/dev/null
+		ip route add "$ip_/32" via "$gw" dev "$dev" 2>/dev/null
+	else
+		if ip route replace "$ip_/32" dev "$dev" 2>/dev/null; then return 0; fi
+		ip route del "$ip_/32" 2>/dev/null
+		ip route add "$ip_/32" dev "$dev" 2>/dev/null
+	fi
+	ip route show 2>/dev/null | grep -qF "$ip_/32 "
+}
+
+# uci_route_upsert: netifd static route for a pin — persistence + automatic
+# re-apply on WAN reconnect (matches ndm: the pin object outlives reconnects).
+# commit is safe: uci commit alone never reloads netifd, zero disruption.
+uci_route_upsert() {
+	ip_="$1"; dev="$2"; gw="$3"
+	if_=$(uci_wan_if "$dev")
+	while sec=$(uci -q show network 2>/dev/null | grep -F "target='$ip_'" | head -n1 | awk -F. '{print $2}' | cut -d= -f1) && [ -n "$sec" ]; do
+		# existing section: refresh the frozen gateway to the current one
+		if [ -n "$gw" ]; then uci set "network.$sec.gateway=$gw" >/dev/null 2>&1; fi
+		uci set "network.$sec.interface=$if_" >/dev/null 2>&1
+		uci -q commit network 2>/dev/null   # staging lives in /tmp — commit or lose it
+		return 0
+	done
+	sec=$(uci -q add network route) || { log "uci add route failed ($ip_)"; return 1; }
+	uci set "network.$sec.interface=$if_" >/dev/null 2>&1
+	uci set "network.$sec.target=$ip_" >/dev/null 2>&1
+	uci set "network.$sec.netmask=255.255.255.255" >/dev/null 2>&1
+	[ -n "$gw" ] && uci set "network.$sec.gateway=$gw" >/dev/null 2>&1
+	uci -q commit network 2>/dev/null
+}
+
+uci_route_drop() {
+	ip_="$1"
+	n=0
+	while sec=$(uci -q show network 2>/dev/null | grep -F "target='$ip_'" | head -n1 | awk -F. '{print $2}' | cut -d= -f1) && [ -n "$sec" ]; do
+		uci -q delete "network.$sec" 2>/dev/null || break
+		# guard: a delete that does not remove the target from `uci show`
+		# must never spin this loop forever
+		n=$((n + 1)); [ "$n" -gt 64 ] && { log "uci_route_drop: delete loop guard hit ($ip_)"; break; }
+	done
+	uci -q commit network 2>/dev/null
+}
+
+# pin_add: kernel route first, VERIFY, then record (file + uci). The daemon's
+# reconciliation trusts silence, so the shim refuses to report success it has
+# not confirmed in the kernel table.
+pin_add() {
+	ip_="${1%/32}"
+	valid_ip "$ip_" || fail "invalid ip: $1"
+	dev=$(wan_dev); [ -n "$dev" ] || fail "no default route (wan down?) — pin deferred"
+	gw=$(wan_gw)
+	route_replace "$ip_" "$dev" "$gw" || fail "ip route replace $ip_/32 failed"
+	grep -qxF "$ip_" "$ROUTES_FILE" 2>/dev/null || { mkdir -p "$STATE_DIR"; echo "$ip_" >> "$ROUTES_FILE"; }
+	uci_route_upsert "$ip_" "$dev" "$gw" || log "uci upsert failed for $ip_ (runtime route still applied)"
+	log "ip route $ip_ ISP -> via ${gw:-direct} dev $dev (pinned)"
+}
+
+# pin_del: idempotent removal in all three places; silence on success.
+pin_del() {
+	ip_="${1%/32}"
+	valid_ip "$ip_" || fail "invalid ip: $1"
+	ip route del "$ip_/32" 2>/dev/null
+	if [ -f "$ROUTES_FILE" ]; then
+		# grep exits 1 when the LAST pin is filtered out — install the filtered
+		# file unconditionally (only a hard error, rc 2, keeps the old one)
+		grep -vxF "$ip_" "$ROUTES_FILE" > "${ROUTES_FILE}.tmp" 2>/dev/null
+		[ $? -ne 2 ] && mv "${ROUTES_FILE}.tmp" "$ROUTES_FILE"
+	fi
+	uci_route_drop "$ip_"
+	log "no ip route $ip_ ISP (removed)"
+}
+
+# pins_reapply: heal every recorded pin against the CURRENT wan dev/gw
+# (procd boot, hotplug ifup, system configuration save).
+pins_reapply() {
+	[ -f "$ROUTES_FILE" ] || return 0
+	dev=$(wan_dev); [ -n "$dev" ] || { log "reapply: wan down — pins kept as recorded"; return 1; }
+	gw=$(wan_gw)
+	applied=0
+	while read -r ip_; do
+		[ -n "$ip_" ] || continue
+		if route_replace "$ip_" "$dev" "$gw"; then
+			uci_route_upsert "$ip_" "$dev" "$gw"
+			applied=$((applied + 1))
+		else
+			log "reapply: FAILED $ip_/32 via ${gw:-direct} dev $dev"
+		fi
+	done < "$ROUTES_FILE"
+	log "reapply: $applied pin(s) via ${gw:-direct} dev $dev"
+}
+
+# tunnel_up / tunnel_down: the nft table inet kgate IS the Proxy0 switch.
+# Phase 1: marker only (no redirect rules — see docs); never touches intent.
+tunnel_up() {
+	if nft list table inet kgate >/dev/null 2>&1; then
+		return 0
+	fi
+	tmp=$(mktemp /tmp/ndmc-nft.XXXXXX) || fail "mktemp"
+	printf 'table inet kgate { comment "kgate Proxy0 switch (phase 1: state marker; client-redirect rules land in phase 2)" }\n' > "$tmp"
+	nft -f "$tmp" 2>/dev/null || { rm -f "$tmp"; fail "nft add table inet kgate"; }
+	rm -f "$tmp"
+	log "interface Proxy0 up (nft table inet kgate)"
+}
+
+tunnel_down() {
+	if nft list table inet kgate >/dev/null 2>&1; then
+		nft delete table inet kgate 2>/dev/null || fail "nft delete table inet kgate"
+	fi
+	log "interface Proxy0 down (nft table inet kgate removed)"
+}
+
+# port_listen: procfs LISTEN check (port arg decimal) — no nc dependency.
+port_listen() {
+	hex=$(printf '%04X' "$1")
+	awk -v p="$hex" 'NR>1 {n=split($2,a,":"); if (a[n]==p && $4=="0A") found=1} END{exit !found}' \
+		/proc/net/tcp /proc/net/tcp6 2>/dev/null
+}
+
+# ---- verbs -------------------------------------------------------------------
+
+show_interface() {
+	if nft list table inet kgate >/dev/null 2>&1; then st="up"; else st="down"; fi
+	if port_listen "$SB_PORT"; then conn="yes"; else conn="no"; fi
+	echo "        state: $st"
+	echo "     connected: $conn"
+	echo "     description: HYST VPN (sing-box) [kgate openwrt shim]"
+}
+
+show_sc_interface() {
+	intent=$(cat "$INTENT_FILE" 2>/dev/null)
+	# mirrors the daemon's intentDown(): only the literal "down" is off
+	if [ "$intent" = "down" ]; then up="no"; else up="yes"; fi
+	echo "        interface Proxy0"
+	echo "            up: $up"
+}
+
+show_ip_route() {
+	# default route first (never matches the /32 ISP greps), then kernel-truth pins
+	ip route show 2>/dev/null | awk '/^default/ {print "        0.0.0.0/0          ->  " $0; exit}'
+	dev=$(wan_dev)
+	[ -n "$dev" ] || return 0
+	ip route show 2>/dev/null | awk -v d="$dev" '/\/32/ && $0 ~ ("dev " d "( |$)") {
+		gw=""
+		for (i=1; i<=NF; i++) if ($i=="via") gw=$(i+1)
+		printf "%-20s ISP   via %s dev %s\n", $1, (gw==""?"direct":gw), d
+	}'
+}
+
+show_running_config() {
+	echo "# kgate-managed state (openwrt ndm-shim, phase 1) — rendered $(date '+%Y-%m-%d %H:%M:%S')"
+	# Proxy0 object exists while any of its state does (intent marker or runtime table);
+	# a clean system prints no Proxy0 token -> destroy cleanliness LEFT==0
+	if [ -f "$INTENT_FILE" ] || nft list table inet kgate >/dev/null 2>&1; then
+		echo "interface Proxy0"
+		echo "     description HYST VPN (sing-box) [kgate openwrt shim]"
+		if nft list table inet kgate >/dev/null 2>&1; then
+			echo "     state: up"
+		else
+			echo "     state: down"
+		fi
+	fi
+	if [ -f "$ROUTES_FILE" ] && [ -s "$ROUTES_FILE" ]; then
+		while read -r ip_; do
+			[ -n "$ip_" ] && echo "ip route $ip_ ISP"
+		done < "$ROUTES_FILE"
+	fi
+	# per-device policies are a Phase-2 concept on OpenWrt; the tokens appear
+	# only if the state files exist, so the destroy grep stays truthful
+	for p in VPN-TV VPN-Laptops-Phones DIRECT-NOVPN; do
+		if [ -f "$STATE_DIR/policies/$p" ]; then
+			echo "ip policy $p"
+			echo "     permit global ISP"
+		fi
+	done
+}
+
+system_save() {
+	pins_reapply || true
+	uci -q commit network 2>/dev/null
+	log "system configuration save (pins reconciled, uci committed)"
+	echo "OK"
+}
+
+system_reboot() {
+	command -v reboot >/dev/null 2>&1 || fail "reboot binary not found"
+	log "system reboot requested"
+	reboot
+}
+
+policy_drop() {
+	if [ -f "$STATE_DIR/policies/$1" ]; then
+		rm -f "$STATE_DIR/policies/$1"
+		log "no ip policy $1"
+	fi
+}
+
+# ---- dispatch ----------------------------------------------------------------
+
+[ "$#" -ge 1 ] || fail "usage: ndmc -c \"<ndm command>\""
+# the daemon calls /bin/ndmc -c "<verb>"; drop the -c flags and join the rest
+CMD=""
+while [ "$#" -gt 0 ]; do
+	if [ "$1" != "-c" ]; then
+		if [ -z "$CMD" ]; then CMD="$1"; else CMD="$CMD $1"; fi
+	fi
+	shift
+done
+[ -n "$CMD" ] || fail "empty command"
+
+case "$CMD" in
+	"show interface Proxy0")        show_interface ;;
+	"show sc interface Proxy0")     show_sc_interface ;;
+	"show ip route")                show_ip_route ;;
+	"show running-config")          show_running_config ;;
+	"interface Proxy0 up")          tunnel_up ;;
+	"interface Proxy0 down")        tunnel_down ;;
+	"no interface Proxy0")          tunnel_down ;;
+	"system configuration save")    system_save ;;
+	"system reboot")                system_reboot ;;
+	"kgate reapply")                pins_reapply ;;
+	"ip route"*)                    # ip route <ip>[ /32] ISP
+		# fixed verbs from the daemon: word splitting here IS the verb parser
+		# shellcheck disable=SC2086
+		set -- $CMD
+		[ "$#" -eq 4 ] || fail "syntax: ip route <ip> ISP"
+		[ "$4" = "ISP" ] || fail "unsupported route target: $4 (expected ISP)"
+		pin_add "$3"
+		;;
+	"no ip route"*)                 # no ip route <ip>[ /32] ISP
+		# fixed verbs from the daemon: word splitting here IS the verb parser
+		# shellcheck disable=SC2086
+		set -- $CMD
+		[ "$#" -eq 5 ] || fail "syntax: no ip route <ip> ISP"
+		[ "$5" = "ISP" ] || fail "unsupported route target: $5 (expected ISP)"
+		pin_del "$4"
+		;;
+	"no ip policy"*)
+		# fixed verbs from the daemon: word splitting here IS the verb parser
+		# shellcheck disable=SC2086
+		set -- $CMD
+		[ "$#" -eq 4 ] || fail "syntax: no ip policy <name>"
+		policy_drop "$4"
+		;;
+	*)
+		fail "unknown command: $CMD"
+		;;
+esac
