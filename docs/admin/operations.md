@@ -125,6 +125,20 @@ CLI-подъём его не создаёт (для чисто-CLI объект�
   выходного IP (`curl -sS https://1.1.1.1/cdn-cgi/trace | grep ip=`)
 - ndmc в PATCH clash API принимает значения в нижнем регистре (`global`/`rule`)
 
+## 🧭 Платформенные границы
+
+- **Keenetic/Netcraze (production)** — вся эта страница описывает ndm-мир:
+  интерфейс Proxy0, route-pins через `ndmc`, политики-сценарии, S99kgate.
+- **OpenWrt 23.05+/24.10 aarch64 (beta, Phase 1)** — демон тот же, но ndm-вербы
+  переводит shim `/usr/bin/ndmc` (`platform/openwrt/`): Proxy0 — это nft-таблица
+  `inet kgate` (есть = up), пины — uci/netifd static routes + reapply на WAN
+  ifup, сервис — procd `/etc/init.d/kgate`. Поле-необкатано: E2E на живом
+  железе впереди; transparent redirect LAN-клиентов — Phase 2.
+- **TP-Link Broadcom-класс — невозможно** и не «пока»: OpenWrt не поддерживает
+  Broadcom-чипы (mainline-портов нет), OEM-прошивка закрыта и не даёт ни ndm,
+  ни shell+nft — слою адаптации kgate (ndm-шлюз на Keenetic, uci/ip/nft-шлюз на
+  OpenWrt) на такой платформе просто не за что зацепиться.
+
 ## 👉 См. также
 
 - [install.md](install.md) — установка и обновление, бэкап перед пакетными операциями

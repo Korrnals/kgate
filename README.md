@@ -7,6 +7,7 @@
 
 [![release](https://img.shields.io/badge/release-v1.4.6-4fc3f7)](https://github.com/Korrnals/kgate/releases)
 [![platform](https://img.shields.io/badge/platform-Netcraze%20%2F%20Keenetic-7c8cff)](#поддерживаемые-роутеры)
+[![openwrt](https://img.shields.io/badge/OpenWrt-23.05%2B%20beta-orange)](#поддерживаемые-роутеры)
 [![arch](https://img.shields.io/badge/arch-aarch64%20%7C%20amd64-9fc0e8)](#артефакты)
 [![api](https://img.shields.io/badge/API-mTLS%20%3A9443-2e7d32)](docs/api/authentication.md)
 [![docs](https://img.shields.io/badge/docs-полный%20комплект-blue)](#-документация)
@@ -21,8 +22,8 @@
 
 | Что | Требование |
 |---|---|
-| Роутер | **Netcraze / Keenetic**, архитектура **aarch64** (MIPS/legacy KN — нет) |
-| ОС | KeeneticOS / NetcrazeOS **4.x–5.x** + Entware в `/opt` (проверено: 5.01.C.7.0-4, Netcraze Ultra) |
+| Роутер | **Netcraze / Keenetic** (production) или **OpenWrt 23.05+/24.10, aarch64** (beta, ndm-shim) — архитектура **aarch64** (MIPS/legacy KN — нет) |
+| ОС | KeeneticOS / NetcrazeOS **4.x–5.x** + Entware в `/opt` (проверено: 5.01.C.7.0-4, Netcraze Ultra); OpenWrt — без Entware, shim-слой `platform/openwrt/` |
 | Место | **≥ 120 МБ** свободного под стек (рекомендуется USB; встроенная память Ultra — впритык) |
 | Ноутбук | Linux amd64/arm64 + ssh-ключ до роутера (ssh-бинарник **не нужен** — транспорт на Go) |
 | Туннель | **hysteria2** (± obfs salamander) до своего/предоставленного сервера, **или подписка провайдера** (vless/Reality, hysteria2, trojan, ss — `kgate subscribe add <url>`) |
@@ -137,9 +138,22 @@ flowchart LR
 
 ## Поддерживаемые роутеры
 
-**Netcraze / Keenetic** (ndm OS 4.x–5.x, Entware, aarch64). Интеграция с ndm —
-суть утилиты: тумблер Proxy0, route-pins, сегменты/политики, переживание
-пересборок netfilter. Порт на другие платформы — через адаптеры (roadmap).
+**Netcraze / Keenetic** (ndm OS 4.x–5.x, Entware, aarch64) — production. Интеграция
+с ndm — суть утилиты: тумблер Proxy0, route-pins, сегменты/политики, переживание
+пересборок netfilter.
+
+| Платформа | Статус | Слой адаптации |
+|---|---|---|
+| KeeneticOS / NetcrazeOS 4.x–5.x (aarch64) | **production** (v1.3+) | ndm: интерфейс Proxy0, route-pins, политики-сценарии |
+| OpenWrt 23.05+ / 24.10 (aarch64) | **beta** — shim-based, поле-необкатано: E2E на железе впереди | ndmc-shim (`platform/openwrt/`): те же ndm-вербы → uci/ip/nft; демон и деплойер Go не менялись |
+| TP-Link Broadcom-класс | **невозможно** | OpenWrt не поддерживает Broadcom-чипы (mainline), OEM-прошивка закрыта — ни ndm, ни shell+nft: слою адаптации не за что зацепиться (почему — [operations.md](docs/admin/operations.md)) |
+
+OpenWrt Phase 1 (честный охват): демон-супервизор, route-pins (uci/netifd
+ persistence + reapply на WAN ifup), self-heal, тумблер/state через nft-таблицу
+`inet kgate`, procd-сервис, hotplug. Transparent client redirect (tproxy/marks
+для LAN-клиентов) и per-device политики — **Phase 2**, требуется реальное
+устройство под рукой. Установка: `install.sh --platform=openwrt` —
+[install.md](docs/admin/install.md); матрица — [requirements.md](docs/admin/requirements.md).
 
 ## Сборка
 
@@ -154,6 +168,8 @@ make install-cli       # CLI в ~/.local/bin
 
 ```
 ├── internal/                  — исходники Go (демон, клиент, деплойер, конфиг)
+├── platform/                  — платформенные слои адаптации:
+│   └── openwrt/               — ndmc-shim, procd-init, hotplug (OpenWrt beta, Phase 1)
 ├── main.go                    — единая точка входа (serve + client + deployer)
 ├── scripts/
 │   ├── build-ipk.sh           — сборка самодостаточного Entware .ipk

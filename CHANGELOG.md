@@ -6,6 +6,24 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- openwrt: platform support, Phase 1 (beta) — the Go daemon/deployer are
+  unchanged; a POSIX-sh ndm-shim (platform/openwrt/ndmc-shim, installed as
+  /usr/bin/ndmc + /bin/ndmc) translates the daemon's ndm verbs to uci/ip/nft:
+  Proxy0 up/down = the `inet kgate` nft table (state marker, no redirect rules
+  — traffic path is Phase 2), route pins = verified kernel /32 routes + netifd
+  static routes (survive reboot and WAN reconnect, hotplug reapply on ifup),
+  show running-config renders the ndm tokens so the destroy cleanliness grep
+  works unchanged. procd init (/etc/init.d/kgate), WAN hotplug hook,
+  install.sh --platform=openwrt (auto-routes on /etc/openwrt_release; no
+  opkg/Entware dependency — prereqs checked and reported, dropbear
+  authorized_keys, /opt compat symlinks for the daemon's hardcoded paths),
+  release archives now carry platform/openwrt/* + the sing-box skeleton.
+  Docs: README platforms section, install.md OpenWrt branch,
+  requirements.md OpenWrt rows, operations.md platform boundaries.
+  Field-untested — E2E on real hardware pending (see install.md for the
+  honest Phase-1 scope: daemon/pins/self-heal/state, no LAN redirect yet).
+
 ## [1.4.6] - 2026-11-08
 
 ### Fixed

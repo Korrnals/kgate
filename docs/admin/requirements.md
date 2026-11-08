@@ -8,11 +8,12 @@
 
 | Требование | Детали | Как проверить |
 |---|---|---|
-| Платформа **Netcraze / Keenetic** | интеграция глубоко завязана на ndm (Proxy-подключения, `ndmc`, политики) — сторонние прошивки (OpenWrt и др.) не поддерживаются | бренд устройства |
-| Архитектура **aarch64** | релизные бинари kgate и sing-box собраны под arm64; MIPS-роутеры (legacy KN-класс) не поддерживаются | `uname -m` → `aarch64` |
-| **KeeneticOS / NetcrazeOS 4.x–5.x** | проверено на 5.01.C.7.0-4 (Netcraze Ultra); ожидаемая совместимость — семейство 4.2+ (ndmc-команды стабильны), но каждой версии ОС требуется контроль после обновления | `ndmc -c "show version"` |
-| **Entware (opkg) в `/opt`** | стек живёт в Entware: бинари, init-скрипт, зависимости (`iptables`, `openssh-server`) | `[ -d /opt/etc/init.d ] && echo OK` |
-| Свободное место **≥ 120 МБ** | распакованный стек ~50–85 МБ (`kgate` ~10 МБ + `sing-box` ~31 МБ + rulesets + CA-пул); рекомендуемый носитель — USB | `df -h /opt` |
+| Платформа **Netcraze / Keenetic** (production) **или OpenWrt 23.05+/24.10** (beta) | production-путь глубоко завязан на ndm (Proxy-подключения, `ndmc`, политики); OpenWrt — через shim-слой `platform/openwrt/` (те же ndm-вербы → uci/ip/nft, Go-код не меняется); прочие прошивки не поддерживаются | бренд устройства / `/etc/openwrt_release` |
+| Архитектура **aarch64** | релизные бинари kgate и sing-box собраны под arm64; MIPS-роутеры (legacy KN-класс) не поддерживаются; x86_64 OpenWrt-боксы — архив `linux_amd64` | `uname -m` → `aarch64` |
+| **KeeneticOS / NetcrazeOS 4.x–5.x** (для Keenetic) | проверено на 5.01.C.7.0-4 (Netcraze Ultra); ожидаемая совместимость — семейство 4.2+ (ndmc-команды стабильны), но каждой версии ОС требуется контроль после обновления | `ndmc -c "show version"` |
+| **OpenWrt 23.05+ / 24.10** (для OpenWrt, beta) | shim-based: `nft` + `uci` (ядро), рекомендованы `iptables-nft ip6tables-nft ca-bundle` (LAN-DNS bypass, TLS); `kmod-nft-tproxy` — Phase 2; Entware НЕ нужен | `cat /etc/openwrt_release && nft --version` |
+| **Entware (opkg) в `/opt`** (только Keenetic) | стек живёт в Entware: бинари, init-скрипт, зависимости (`iptables`, `openssh-server`); на OpenWrt стек живёт в `/usr/bin` + `/etc/kgate` | `[ -d /opt/etc/init.d ] && echo OK` |
+| Свободное место **≥ 120 МБ** | распакованный стек ~50–85 МБ (`kgate` ~10 МБ + `sing-box` ~31 МБ + rulesets + CA-пул); рекомендуемый носитель — USB; на OpenWrt — место на overlay (`/usr`, `/etc`), extroot/USB опционально | `df -h /opt` (Keenetic) / `df -h /` (OpenWrt) |
 
 Подготовка роутера пошагово — [preparation.md](preparation.md).
 
@@ -53,15 +54,16 @@
 - **Другие протоколы** (wireguard, tuic, vmess) — движок sing-box их умеет, но парсер подписки их пока не разбирает.
 - **Режим сервера** — kgate только клиент: сервер hysteria2/vless нужно поднять отдельно (VPS) или использовать предоставленный
 - **Нативной карточки в веб-интерфейсе роутера** — реестр компонентов KeeneticOS закрыт; управление: тумблер Proxy0 в вебе + CLI/mTLS API
-- **Не-aarch64 роутеров** и сторонних прошивок
+- **Не-aarch64 роутеров** и сторонних прошивок (кроме OpenWrt 23.05+/24.10 — beta, см. выше; TP-Link Broadcom-класс — невозможно: см. [operations.md](operations.md))
 
 ## ✅ Быстрая проверка «подходит ли мне»
 
 ```bash
-uname -m                                  # aarch64
-ndmc -c "show version" | head -3          # KeeneticOS 4.x/5.x
-[ -d /opt/etc/init.d ] && echo Entware-OK
-df -h /opt                                # ≥ 120MB
+uname -m                                  # aarch64 (или x86_64 для OpenWrt-бокса)
+ndmc -c "show version" | head -3          # KeeneticOS 4.x/5.x (для OpenWrt — нет ndmc)
+[ -d /opt/etc/init.d ] && echo Entware-OK # путь Keenetic
+[ -f /etc/openwrt_release ] && nft --version   # путь OpenWrt (beta, 23.05+)
+df -h /opt                                # ≥ 120MB (Keenetic) / df -h / (OpenWrt)
 ```
 
 Все четыре пункта зелёные → [install.md](install.md). Что-то не сходится —

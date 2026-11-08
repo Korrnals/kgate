@@ -128,6 +128,54 @@ kgate update    # GitHub Releases → сравнение версий → sha256
 Пакетное обновление (`opkg upgrade kgate`) —
 [alternatives-install.md](alternatives-install.md). Откат — [releases.md](releases.md).
 
+## 🟠 OpenWrt 23.05+/24.10 · beta (Phase 1)
+
+> Вторая платформа, shim-based: демон и деплойер Go не менялись — на OpenWrt
+> их ndm-вербы переводит shell-слой `/usr/bin/ndmc` (symlink `/bin/ndmc`) в
+> uci/ip/nft. **Beta**: поле-необкатано, E2E на живом устройстве впереди.
+
+**Что работает в Phase 1:** демон-супервизор (sing-box под присмотром, mTLS
+API), route-pins (uci/netifd static routes — переживают reboot и WAN-reconnect,
+hotplug reapply), flap self-heal, тумблер/state (nft-таблица `inet kgate`),
+procd-сервис, socks-выдача `:1080`/`:1090` для ручных клиентов.
+**Что НЕ входит (Phase 2):** transparent redirect LAN-клиентов (tproxy/marks —
+нужны `kmod-nft-tproxy` и реальное железо), per-device политики (VPN-TV и
+пр.), dnsmasq-full.
+
+Предпосылки (проверяются и репортятся, НИЧЕГО не ставится — opkg руками при
+желании): `nft` + `uci` (ядро 23.05+), рекомендованы `iptables-nft ip6tables-nft
+ca-bundle` (LAN-DNS bypass демона и TLS наружу), `kmod-nft-tproxy` — Phase 2.
+
+```bash
+# с ноутбука (или scp install.sh на роутер и запустить локально):
+ssh root@192.168.1.1 'curl -fsSL \
+  https://raw.githubusercontent.com/Korrnals/kgate/main/scripts/install.sh \
+  | sh -s -- --platform=openwrt'
+```
+
+Инсталлер сам ставит: `kgate`+`sing-box` (pinned 1.11.15) в `/usr/bin`, shim в
+`/usr/bin/ndmc` + `/bin/ndmc`, procd-init `/etc/init.d/kgate` (enabled),
+hotplug-хук, `/etc/kgate/{kgate.yaml,sing-box/}` (плейсхолдеры, существующие
+конфиги не перетираются) и /opt-compat symlinks для жёстко прописанных путей
+демона (`/opt/var`→`/var`, `/opt/etc/{kgate,sing-box}`→`/etc/kgate/...`,
+`/opt/sbin/{iptables,ip6tables}`→`*-nft`). authorized_keys → dropbear
+(`/etc/dropbear/authorized_keys` — только создаёт, ключи не трогает).
+
+Далее:
+
+```sh
+vi /etc/kgate/kgate.yaml              # host, server_ip
+vi /etc/kgate/sing-box/config.json    # server / password (плейсхолдеры)
+# mTLS-серты: на ноутбуке kgate certs, потом
+# scp ~/.kgate/{ca.crt,server.crt,server.key} root@192.168.1.1:/etc/kgate/
+/etc/init.d/kgate start && /etc/init.d/kgate stack   # демон + sing-box + Proxy0 + пины
+```
+
+Клиент с ноутбука — как обычно (`kgate status/verify/toggle`, указав в
+`~/.kgate/kgate.yaml` `host` роутера; клиентские серты — те же `kgate certs`).
+Выключение туннеля — `kgate toggle off` (intent-файл `/etc/kgate/intent`
+переживает reboot; веб-клик lasting-off не даёт — контракт 1.4.6 сохранён).
+
 ## 👉 См. также
 
 - [alternatives-install.md](alternatives-install.md) — opkg-фид, вручную из Releases
