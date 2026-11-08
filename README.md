@@ -5,7 +5,7 @@
 **KGATE** — единая утилита для VPN-стека на роутерах **Netcraze / Keenetic**:
 демон-супервизор на роутере + mTLS-клиент + деплойер «с нуля до рабочего состояния».
 
-[![release](https://img.shields.io/badge/release-v1.4.5-4fc3f7)](https://github.com/Korrnals/kgate/releases)
+[![release](https://img.shields.io/badge/release-v1.4.6-4fc3f7)](https://github.com/Korrnals/kgate/releases)
 [![platform](https://img.shields.io/badge/platform-Netcraze%20%2F%20Keenetic-7c8cff)](#поддерживаемые-роутеры)
 [![arch](https://img.shields.io/badge/arch-aarch64%20%7C%20amd64-9fc0e8)](#артефакты)
 [![api](https://img.shields.io/badge/API-mTLS%20%3A9443-2e7d32)](docs/api/authentication.md)

@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.6] - 2026-11-08
+
+### Fixed
+- stability: the flap self-heal intent moved to an operator intent file
+  (/opt/etc/kgate/intent) — the sc view mirrors live state and cannot
+  distinguish 'owner off' from 'flap'. kgate toggle on/off writes the file;
+  the daemon re-raises a dropped tunnel unless it says down. The web
+  dashboard switch can no longer take the tunnel down (clicks are overridden
+  within one tick) — the off-switch is `kgate toggle off`.
+- deploy: the ndm stage records intent=up after raising the tunnel.
+
 ## [1.4.5] - 2026-11-08
 
 ### Fixed
