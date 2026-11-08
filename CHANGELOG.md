@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-11-07
+
+### Fixed
+- stability: the 06.11 flap class is closed — daemon flapSelfHeal re-raises
+  Proxy0 when the SAVED intent is up (a deliberate off via web click or
+  `kgate toggle off` persists intent=down and is respected); destroy asserts
+  the processes actually died (SIGKILL escalation, loud failure on a silent
+  survivor); deploy services force a fresh engine (a surviving old sing-box
+  can no longer serve replaced configs; adoption removed). See
+  task kgate-1.4.4-stability.
+
 ## [1.4.3] - 2026-11-06
 
 ## [1.4.2] - 2026-11-06

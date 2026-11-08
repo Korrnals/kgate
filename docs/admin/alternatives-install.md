@@ -84,16 +84,16 @@ opkg update && opkg upgrade kgate
 
 ```sh
 cd /tmp
-wget https://github.com/Korrnals/kgate/releases/download/v1.4.3/kgate_1.4.3-1_aarch64-3.10.ipk
-opkg install ./kgate_1.4.3-1_aarch64-3.10.ipk
+wget https://github.com/Korrnals/kgate/releases/download/v1.4.4/kgate_1.4.4-1_aarch64-3.10.ipk
+opkg install ./kgate_1.4.4-1_aarch64-3.10.ipk
 ```
 
 или с ноутбука:
 
 ```bash
-curl -sSLO https://github.com/Korrnals/kgate/releases/download/v1.4.3/kgate_1.4.3-1_aarch64-3.10.ipk
-scp kgate_1.4.3-1_aarch64-3.10.ipk root@192.168.1.1:/tmp/
-ssh root@192.168.1.1 'opkg install /tmp/kgate_1.4.3-1_aarch64-3.10.ipk'
+curl -sSLO https://github.com/Korrnals/kgate/releases/download/v1.4.4/kgate_1.4.4-1_aarch64-3.10.ipk
+scp kgate_1.4.4-1_aarch64-3.10.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 'opkg install /tmp/kgate_1.4.4-1_aarch64-3.10.ipk'
 ```
 
 После установки — те же шаги настройки, что для фида (см. выше).
@@ -106,14 +106,14 @@ ssh root@192.168.1.1 'opkg install /tmp/kgate_1.4.3-1_aarch64-3.10.ipk'
 ```sh
 cd /tmp
 # движок: достаём sing-box из ipk
-wget https://github.com/Korrnals/kgate/releases/download/v1.4.3/kgate_1.4.3-1_aarch64-3.10.ipk
+wget https://github.com/Korrnals/kgate/releases/download/v1.4.4/kgate_1.4.4-1_aarch64-3.10.ipk
 mkdir /tmp/ipk && cd /tmp/ipk && tar -xzf /tmp/kgate_*.ipk && tar -xzf data.tar.gz
 install -m 0755 opt/sbin/sing-box /opt/sbin/sing-box
 
 # супервизор: релизный архив kgate
 cd /tmp
-wget https://github.com/Korrnals/kgate/releases/download/v1.4.3/kgate_1.4.3_linux_arm64.tar.gz
-tar -xzf kgate_1.4.3_linux_arm64.tar.gz
+wget https://github.com/Korrnals/kgate/releases/download/v1.4.4/kgate_1.4.4_linux_arm64.tar.gz
+tar -xzf kgate_1.4.4_linux_arm64.tar.gz
 install -m 0755 kgate /opt/sbin/kgate
 ```
 
@@ -122,7 +122,7 @@ rulesets) и раскладываются так:
 
 | Источник | Путь на роутере | Права |
 |---|---|---|
-| `kgate` (из `kgate_1.4.3_linux_arm64.tar.gz`) | `/opt/sbin/kgate` | 0755 |
+| `kgate` (из `kgate_1.4.4_linux_arm64.tar.gz`) | `/opt/sbin/kgate` | 0755 |
 | `sing-box` (из `data.tar.gz` ipk) | `/opt/sbin/sing-box` | 0755 |
 | `examples/S99kgate` | `/opt/etc/init.d/S99kgate` | 0755 |
 | `examples/ndm-commands.sh` | `/opt/etc/ndm-commands.sh` | 0755 |
