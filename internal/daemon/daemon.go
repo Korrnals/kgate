@@ -744,6 +744,7 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 		time.Sleep(time.Second)
 		os.Exit(0)
 	})
+	d.registerPolicyHandlers(mux, logger)
 
 	srv := &http.Server{Addr: d.cfg.Daemon.APIListen, Handler: mux, TLSConfig: tlsCfg,
 		ReadHeaderTimeout: 5 * time.Second}

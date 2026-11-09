@@ -208,6 +208,79 @@ func configCmd() *cobra.Command {
 	return cfg
 }
 
+func policyCmd() *cobra.Command {
+	policy := &cobra.Command{
+		Use:   "policy",
+		Short: "политики трафика (policy-v2): привязка устройств/сегментов к VPN или напрямую",
+		Long: `Политика решает, ЧЕРЕЗ ЧТО ходит устройство: VPN — через туннель (Proxy0),
+NO-VPN — напрямую через провайдера (ISP). Устройство БЕЗ привязки идёт напрямую —
+это честный дефолт policy-v2: дефолтный маршрут дома = ISP, туннель включается
+только явной привязкой (kgate policy set … или all-vpn). Таблица привязок живая
+(ndm show ip hotspot); политики VPN/NO-VPN создаёт deploy (ndm-commands.sh v2).
+
+  kgate policy list                                        — устройства + сегменты + политики (live)
+  kgate policy devices                                     — только устройства
+  kgate policy segments                                    — только сегменты (и число устройств)
+  kgate policy set device <MAC|hostname> <VPN|NO-VPN|none> — none = снять привязку
+  kgate policy set segment <Bridge|имя>  <VPN|NO-VPN|none> — на весь сегмент
+  kgate policy all-vpn                                     — ВСЕ активные устройства → VPN
+  kgate policy all-direct                                  — снять все привязки (всё напрямую)
+
+MAC надёжнее hostname: имена могут повторяться. Привязка сегмента перекрывается
+привязкой устройства. Всё через mTLS API демона; изменения сохраняются в ndm (save).`,
+		SilenceUsage: true,
+	}
+
+	list := &cobra.Command{Use: "list", Short: "таблица: hostname/ip/mac/сегмент/политика + сегменты",
+		RunE: func(cmd *cobra.Command, args []string) error { client.PolicyList(load()); return nil }}
+	devices := &cobra.Command{Use: "devices", Short: "только устройства",
+		RunE: func(cmd *cobra.Command, args []string) error { client.PolicyDevices(load()); return nil }}
+	segments := &cobra.Command{Use: "segments", Short: "сегменты с их политиками и числом устройств",
+		RunE: func(cmd *cobra.Command, args []string) error { client.PolicySegments(load()); return nil }}
+
+	validPol := func(pol string) error {
+		switch pol {
+		case "VPN", "NO-VPN", "none":
+			return nil
+		}
+		return fmt.Errorf("политика %q не поддерживается — разрешены VPN|NO-VPN|none (none = снять привязку)", pol)
+	}
+	set := &cobra.Command{Use: "set", Short: "привязать устройство или сегмент к политике"}
+	setDev := &cobra.Command{
+		Use:   "device <MAC|hostname> <VPN|NO-VPN|none>",
+		Args:  cobra.ExactArgs(2),
+		Short: "привязать устройство (MAC надёжнее) или снять привязку (none)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validPol(args[1]); err != nil {
+				return err
+			}
+			client.PolicySet(load(), "device", args[0], args[1])
+			return nil
+		},
+	}
+	setSeg := &cobra.Command{
+		Use:   "segment <Bridge|имя> <VPN|NO-VPN|none>",
+		Args:  cobra.ExactArgs(2),
+		Short: "привязать весь сегмент (Bridge0/Home) или снять (none)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validPol(args[1]); err != nil {
+				return err
+			}
+			client.PolicySet(load(), "segment", args[0], args[1])
+			return nil
+		},
+	}
+	set.AddCommand(setDev, setSeg)
+
+	allVpn := &cobra.Command{Use: "all-vpn", Short: "ВСЕ активные устройства → VPN (offline не трогаем)",
+		RunE: func(cmd *cobra.Command, args []string) error { client.PolicyAllVPN(load()); return nil }}
+	allDirect := &cobra.Command{Use: "all-direct", Short: "снять ВСЕ привязки (дефолт = напрямую)",
+		RunE: func(cmd *cobra.Command, args []string) error { client.PolicyAllDirect(load()); return nil }}
+
+	policy.AddCommand(list, devices, segments, set, allVpn, allDirect)
+	return policy
+}
+
 func main() {
 	root := &cobra.Command{
 		Use:   "kgate",
@@ -222,6 +295,7 @@ func main() {
   config   — create/view/path/edit: yaml-конфиг по дефолтному пути
   update   — самобновление бинарника из GitHub Releases
   man      — man-страница kgate(1)
+  policy   — политики трафика устройств/сегментов: VPN / NO-VPN / напрямую (policy-v2)
   status/verify/toggle/ruexit/logs/reboot — mTLS-клиент с ноутбука`,
 		SilenceUsage: true,
 	}
@@ -537,6 +611,7 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error { client.Logs(load()); return nil }})
 	root.AddCommand(&cobra.Command{Use: "reboot", Short: "ребут роутера",
 		RunE: func(cmd *cobra.Command, args []string) error { client.Reboot(load()); return nil }})
+	root.AddCommand(policyCmd())
 
 	ver := &cobra.Command{Use: "version", Short: "версия", Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("kgate %s (serve + mTLS client + deployer)\n", appVersion)

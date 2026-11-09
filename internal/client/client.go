@@ -2,6 +2,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"kgate/internal/model"
@@ -147,6 +149,135 @@ func Toggle(c *model.Config, state string) {
 	b, _ := api(c, "POST", "/api/v1/toggle",
 		strings.NewReader(`{"state":"`+state+`"}`))
 	fmt.Println("=== toggle", state, "===")
+	fmt.Println(pretty(b))
+}
+
+// ---- policy-v2 (kgate policy …) ----
+
+// dash renders empty values in the policy tables (ndm: пустое поле = не привязано).
+func dash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "-"
+	}
+	return s
+}
+
+type policyHostView struct {
+	Hostname string `json:"hostname"`
+	IP       string `json:"ip"`
+	MAC      string `json:"mac"`
+	Segment  string `json:"segment"`
+	Policy   string `json:"policy"`
+	Active   bool   `json:"active"`
+}
+
+type policySegmentView struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Policy      string `json:"policy"`
+	Active      bool   `json:"active"`
+	Hosts       int    `json:"hosts"`
+}
+
+type policyListReply struct {
+	Policies []string            `json:"policies"`
+	Hosts    []policyHostView    `json:"hosts"`
+	Segments []policySegmentView `json:"segments"`
+}
+
+func policyFetchList(c *model.Config) (policyListReply, bool) {
+	var rep policyListReply
+	b, _ := api(c, "GET", "/api/v1/policy/list", nil)
+	if json.Unmarshal(b, &rep) != nil {
+		fmt.Println(string(b)) // не-JSON (ошибка mTLS/демона) — покажи как есть
+		return rep, false
+	}
+	return rep, true
+}
+
+// PolicyList: устройства + сегменты + политики одним экраном (kgate policy list).
+func PolicyList(c *model.Config) {
+	rep, ok := policyFetchList(c)
+	if !ok {
+		return
+	}
+	fmt.Println("политики:", strings.Join(rep.Policies, ", "))
+	policyPrintHosts(rep.Hosts)
+	policyPrintSegments(rep.Segments)
+}
+
+// PolicyDevices: только устройства (kgate policy devices).
+func PolicyDevices(c *model.Config) {
+	rep, ok := policyFetchList(c)
+	if !ok {
+		return
+	}
+	policyPrintHosts(rep.Hosts)
+}
+
+// PolicySegments: только сегменты (kgate policy segments).
+func PolicySegments(c *model.Config) {
+	rep, ok := policyFetchList(c)
+	if !ok {
+		return
+	}
+	policyPrintSegments(rep.Segments)
+}
+
+func policyPrintHosts(hosts []policyHostView) {
+	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "ИМЯ\tIP\tMAC\tСЕГМЕНТ\tПОЛИТИКА\tАКТИВНО")
+	for _, h := range hosts {
+		pol := dash(h.Policy)
+		if pol == "-" {
+			pol = "(дефолт: напрямую)"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			dash(h.Hostname), dash(h.IP), dash(h.MAC), dash(h.Segment), pol, yesno(h.Active))
+	}
+	w.Flush()
+}
+
+func policyPrintSegments(segs []policySegmentView) {
+	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "СЕГМЕНТ\tОПИСАНИЕ\tПОЛИТИКА\tУСТРОЙСТВ\tАКТИВНО")
+	for _, s := range segs {
+		pol := dash(s.Policy)
+		if pol == "-" {
+			pol = "(дефолт: напрямую)"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n",
+			s.Name, dash(s.Description), pol, s.Hosts, yesno(s.Active))
+	}
+	w.Flush()
+}
+
+func yesno(b bool) string {
+	if b {
+		return "да"
+	}
+	return "нет"
+}
+
+// PolicySet: привязка устройства/сегмента к VPN/NO-VPN или снятие (none).
+func PolicySet(c *model.Config, kind, target, pol string) {
+	path := "/api/v1/policy/set-" + kind
+	body, _ := json.Marshal(map[string]string{"target": target, "policy": pol})
+	b, _ := api(c, "POST", path, bytes.NewReader(body))
+	fmt.Printf("=== policy set %s %s → %s ===\n", kind, target, pol)
+	fmt.Println(pretty(b))
+}
+
+// PolicyAllVPN / PolicyAllDirect: массовые режимы (все активные в VPN / снять все привязки).
+func PolicyAllVPN(c *model.Config) {
+	b, _ := api(c, "POST", "/api/v1/policy/all-vpn", nil)
+	fmt.Println("=== policy all-vpn ===")
+	fmt.Println(pretty(b))
+}
+
+func PolicyAllDirect(c *model.Config) {
+	b, _ := api(c, "POST", "/api/v1/policy/all-direct", nil)
+	fmt.Println("=== policy all-direct ===")
 	fmt.Println(pretty(b))
 }
 
