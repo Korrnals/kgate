@@ -6,6 +6,23 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-09
+
+### Added
+- policies: `kgate policy` — per-device/segment policy management (list,
+  devices, segments, set device/segment, all-vpn, all-direct). Deploy now
+  creates exactly TWO policies — VPN (tunnel) and NO-VPN (direct) — with an
+  honest default: the unbound device rides the base connection (ISP);
+  Proxy0 priority raised to 1200 and the stale `0.0.0.0/0 Proxy0` static
+  route is un-routed on every deploy (the web 'Приоритеты доступов' page
+  re-checks both connections otherwise).
+- openwrt (beta): ndmc-shim verb translation (uci/ip/nft), procd init,
+  hotplug pin-reapply, `install.sh --platform=openwrt`, platform files in
+  release archives; OpenWrt lab (podman) — shim verb matrix 19 PASS,
+  migration matrix 21/21, install smoke PASS. Field E2E pending hardware.
+- deploy migrates legacy policies (VPN-TV/VPN-Laptops-Phones/DIRECT-NOVPN)
+  to NO-VPN bindings and removes the objects.
+
 ### Added
 - policy-v2: честный дефолт = провайдер, политики VPN/NO-VPN и команда
   `kgate policy`. Деплой создаёт РОВНО ДВЕ политики — VPN (permit Proxy0,

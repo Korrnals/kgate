@@ -7,7 +7,7 @@
 Политики трафика policy-v2: честный дефолт = провайдер, туннель — по явной привязке
 (`kgate policy`), политики VPN/NO-VPN создаёт деплой.
 
-[![release](https://img.shields.io/badge/release-v1.4.6-4fc3f7)](https://github.com/Korrnals/kgate/releases)
+[![release](https://img.shields.io/badge/release-v1.5.0-4fc3f7)](https://github.com/Korrnals/kgate/releases)
 [![platform](https://img.shields.io/badge/platform-Netcraze%20%2F%20Keenetic-7c8cff)](#поддерживаемые-роутеры)
 [![openwrt](https://img.shields.io/badge/OpenWrt-23.05%2B%20beta-orange)](#поддерживаемые-роутеры)
 [![arch](https://img.shields.io/badge/arch-aarch64%20%7C%20amd64-9fc0e8)](#артефакты)
