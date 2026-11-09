@@ -77,6 +77,30 @@ func TestParseHotspot_DesignFixture(t *testing.T) {
 	}
 }
 
+func TestParseHotspot_AccessPointRemark(t *testing.T) {
+	// "access point:" is a two-word key and the value may carry a remark —
+	// the bind token is the first field, the remark is a fallback description
+	out := `
+          access point: Bridge2 (SMART)
+             description: "SMART segment"
+                  policy: NO-VPN
+                hostname: "sensor"
+                     mac: aa:bb:cc:dd:ee:09
+                  policy:
+                   active: yes
+`
+	tbl := ParseHotspot(out)
+	if len(tbl.Segments) != 1 || len(tbl.Hosts) != 1 {
+		t.Fatalf("parsed %+v", tbl)
+	}
+	if s := tbl.Segments[0]; s.Name != "Bridge2" || s.Description != "SMART segment" || s.Policy != "NO-VPN" {
+		t.Errorf("segment = %+v", s)
+	}
+	if h := tbl.Hosts[0]; h.Segment != "Bridge2" || h.Policy != "" || !h.Active {
+		t.Errorf("host = %+v", h)
+	}
+}
+
 func TestParseHotspot_MissingHostname(t *testing.T) {
 	out := `
                 hostname: "known"

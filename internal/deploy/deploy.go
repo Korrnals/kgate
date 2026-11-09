@@ -229,8 +229,14 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 }
 
 func (r *Runner) NDM() {
-	fmt.Println("→ deploy: ndm (Proxy0, пины, DNS, политики)")
+	fmt.Println("→ deploy: ndm (Proxy0, пины, DNS, политики policy-v2)")
 	r.step("ndm-commands.sh идемпотентным прогоном", `{ test -f /opt/etc/ndm-commands.sh || { echo "ndm-commands.sh missing — run kgate files first"; exit 1; }; KGATE_SERVER_IP="`+r.c.ServerIP+`" sh /opt/etc/ndm-commands.sh 2>&1; }`)
+	// belt and suspenders (policy-v2, поле-наблюдение 09.11): веб «Приоритеты
+	// доступов» при каждом save возвращает застоявшийся статический
+	// `ip route 0.0.0.0/0 Proxy0` — а дефолтная политика с ним смотрит не
+	// только на ISP. Явный un-route ПОСЛЕ ndm-commands.sh (там он тоже есть)
+	// — IaC-гарантия честного дефолта = ISP.
+	r.step("un-route stale 0.0.0.0/0 Proxy0 (честный дефолт = ISP)", `ndmc -c "no ip route 0.0.0.0/0 Proxy0"; n=$(ndmc -c "show ip route" | grep -c "0.0.0.0/0.*Proxy0"); [ "$n" = "0" ] && echo "default policy: ISP only (ok)" || echo "WARNING: 0.0.0.0/0 Proxy0 всё ещё в таблице ($n) — проверь веб «Приоритеты доступов»"`)
 	// system configuration save ПОСЛЕ подъёма Proxy0: веб-переключатель читает
 	// конфиг-вью (show.sc.interface up), и для объекта, хоть раз тронутого
 	// вебом/RCI, up-узел в нём материализуется ТОЛЬКО явным save — без него
@@ -362,7 +368,11 @@ echo "pins removed"`
 	r.step("снятие route-pin'ов и name-server", pins)
 
 	fmt.Println("→ destroy: ndm (объекты)")
-	r.step("удаление интерфейса Proxy0 и политик-сценариев", `ndmc -c "no ip policy VPN-TV"
+	// policy-v2: VPN/NO-VPN + legacy-эскейпы v1 (установка до миграции ещё
+	// держит их; сносим в любом случае — destroy должен чистить обе эпохи)
+	r.step("удаление интерфейса Proxy0 и политик (v2 + legacy v1)", `ndmc -c "no ip policy VPN"
+ndmc -c "no ip policy NO-VPN"
+ndmc -c "no ip policy VPN-TV"
 ndmc -c "no ip policy VPN-Laptops-Phones"
 ndmc -c "no ip policy DIRECT-NOVPN"
 ndmc -c "no interface Proxy0"
@@ -383,7 +393,7 @@ RC=$(ndmc -c "show running-config" 2>&1) || { echo "ndmc query FAILED"; exit 1; 
 [ -n "$RC" ] || { echo "running-config query EMPTY — blind gate запрещён"; exit 1; }
 RQ=$(ndmc -c "show ip route" 2>&1) || { echo "ip route query FAILED"; exit 1; }
 [ -n "$RQ" ] || { echo "ip route query EMPTY — blind gate запрещён"; exit 1; }
-LEFT=$(printf '%s\n' "$RC" | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN" || true)
+LEFT=$(printf '%s\n' "$RC" | grep -cE "Proxy0|VPN-TV|VPN-Laptops-Phones|DIRECT-NOVPN|(^|[[:space:]])policy VPN([[:space:]]|$)|(^|[[:space:]])policy NO-VPN([[:space:]]|$)" || true)
 PINS=$(printf '%s\n' "$RQ" | grep -cE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32 .*ISP" || true)
 echo "leftover=$LEFT pins=$PINS"
 test "$LEFT" -eq 0 -a "$PINS" -eq 0`)

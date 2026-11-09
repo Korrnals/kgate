@@ -103,7 +103,15 @@ func ParseHotspot(out string) Table {
 		case "interface", "access point":
 			flushHost()
 			seg = -1
-			t.Segments = append(t.Segments, Segment{Name: val})
+			// value may carry a remark ("Bridge0 (Home)") — the bind token is
+			// the first field; the full text is the fallback description
+			name := val
+			desc := ""
+			if f := strings.Fields(val); len(f) > 0 {
+				name = f[0]
+				desc = strings.Trim(strings.TrimSpace(strings.Join(f[1:], " ")), "()")
+			}
+			t.Segments = append(t.Segments, Segment{Name: name, Description: desc})
 			seg = len(t.Segments) - 1
 		case "description":
 			if cur == nil && seg >= 0 {
