@@ -35,10 +35,25 @@
 #                                touched here, web-click semantics stay intact)
 #   system reboot             -> /sbin/reboot
 #   no interface Proxy0       -> runtime down (destroy surface completeness)
-#   no ip policy <name>       -> drop the policy state file if any (Phase 2 stub)
+#   no ip policy <name>       -> drop the policy state file if any (destroy surface;
+#                                Phase 1 supported)
+#   show ip hotspot /         -> policy-v2 verbs: CLEAR STUB ERRORS (exit 1,
+#   show ip policy /             "system failed [0xkgate: ...Phase 2...]") — the
+#   ip policy * / ip hotspot *   daemon's ndmcFailed() reads exactly that surface;
+#                                the real binding table + uci-backed policies land
+#                                in Phase 2 (docs/dev/policy-v2-design.md)
 #   kgate reapply             -> internal (not an ndm verb): re-apply pins with the
 #                                current wan dev/gw; called by the procd init at boot
 #                                and by the hotplug hook on WAN ifup
+#
+# LAB mode (KGATE_LAB=1, podman lab: lab/run.sh): containers run rootless
+# WITHOUT NET_ADMIN, so nft and `ip route` mutations fail with EPERM. In lab
+# mode the shim DEGRADES HONESTLY: tunnel up/down fall back to state markers
+# ($STATE_DIR/lab-proxy0-up), pin_add records to the routes file (marked
+# lab-degrade) instead of dying — so the verb surface (matrix) can assert
+# command coverage without a kernel. The marker never lies in output text:
+# degraded lines are tagged "lab-degrade". Outside the lab the behavior is
+# unchanged (fail loudly).
 #
 # Unknown verbs fail with "system failed [0xkgate: ...]" + exit 1: the daemon's
 # ndmcFailed() reads exactly that surface and retries on the next tick.
@@ -53,6 +68,7 @@
 # POSIX sh; no bash. Installed as /usr/bin/ndmc with a /bin/ndmc symlink.
 
 STATE_DIR="${KGATE_STATE_DIR:-/etc/kgate}"            # test seam: KGATE_STATE_DIR
+LAB_MODE="${KGATE_LAB:-0}"                 # lab: no NET_ADMIN -> degrade to state markers
 ROUTES_FILE="$STATE_DIR/routes"
 WAN_IF_FILE="$STATE_DIR/wan-if"          # optional override: uci logical name for pin routes
 INTENT_FILE="${KGATE_INTENT_FILE:-/opt/etc/kgate/intent}"      # daemon-owned (via /opt/etc/kgate -> /etc/kgate)
@@ -76,6 +92,12 @@ fail() {
 wan_dev() {
 	ip route show 2>/dev/null | awk '$1=="default"{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}'
 }
+
+# lab plumbing: KGATE_LAB=1 degrades privileged operations to state markers
+# (podman rootless: no NET_ADMIN — see header). Markers are tagged, never silent.
+lab_mark()  { mkdir -p "$STATE_DIR" 2>/dev/null; : > "$STATE_DIR/lab-$1"; }
+lab_has()   { [ "$LAB_MODE" = "1" ] && [ -f "$STATE_DIR/lab-$1" ]; }
+lab_clear() { rm -f "$STATE_DIR/lab-$1" 2>/dev/null; }
 
 # wan_gw: the gateway of the default route ("" for point-to-point wan, e.g. pppoe)
 wan_gw() {
@@ -158,19 +180,27 @@ uci_route_drop() {
 
 # pin_add: kernel route first, VERIFY, then record (file + uci). The daemon's
 # reconciliation trusts silence, so the shim refuses to report success it has
-# not confirmed in the kernel table.
+# not confirmed in the kernel table. LAB: no NET_ADMIN -> record-only + tag.
 pin_add() {
 	ip_="${1%/32}"
 	valid_ip "$ip_" || fail "invalid ip: $1"
 	dev=$(wan_dev); [ -n "$dev" ] || fail "no default route (wan down?) — pin deferred"
 	gw=$(wan_gw)
-	route_replace "$ip_" "$dev" "$gw" || fail "ip route replace $ip_/32 failed"
+	if ! route_replace "$ip_" "$dev" "$gw"; then
+		if [ "$LAB_MODE" = "1" ]; then
+			grep -qxF "$ip_" "$ROUTES_FILE" 2>/dev/null || { mkdir -p "$STATE_DIR"; echo "$ip_" >> "$ROUTES_FILE"; }
+			log "ip route $ip_ ISP lab-degrade: no NET_ADMIN — recorded to $ROUTES_FILE only (kernel untouched)"
+			return 0
+		fi
+		fail "ip route replace $ip_/32 failed"
+	fi
 	grep -qxF "$ip_" "$ROUTES_FILE" 2>/dev/null || { mkdir -p "$STATE_DIR"; echo "$ip_" >> "$ROUTES_FILE"; }
 	uci_route_upsert "$ip_" "$dev" "$gw" || log "uci upsert failed for $ip_ (runtime route still applied)"
 	log "ip route $ip_ ISP -> via ${gw:-direct} dev $dev (pinned)"
 }
 
 # pin_del: idempotent removal in all three places; silence on success.
+# LAB: the recorded (degraded) pin is dropped from the file as well.
 pin_del() {
 	ip_="${1%/32}"
 	valid_ip "$ip_" || fail "invalid ip: $1"
@@ -206,13 +236,22 @@ pins_reapply() {
 
 # tunnel_up / tunnel_down: the nft table inet kgate IS the Proxy0 switch.
 # Phase 1: marker only (no redirect rules — see docs); never touches intent.
+# LAB: nft is unavailable (no NET_ADMIN) — the state marker stands in.
 tunnel_up() {
 	if nft list table inet kgate >/dev/null 2>&1; then
 		return 0
 	fi
 	tmp=$(mktemp /tmp/ndmc-nft.XXXXXX) || fail "mktemp"
 	printf 'table inet kgate { comment "kgate Proxy0 switch (phase 1: state marker; client-redirect rules land in phase 2)" }\n' > "$tmp"
-	nft -f "$tmp" 2>/dev/null || { rm -f "$tmp"; fail "nft add table inet kgate"; }
+	if ! nft -f "$tmp" 2>/dev/null; then
+		rm -f "$tmp"
+		if [ "$LAB_MODE" = "1" ]; then
+			lab_mark proxy0-up
+			log "interface Proxy0 up lab-degrade: no NET_ADMIN — state marker (not an nft table)"
+			return 0
+		fi
+		fail "nft add table inet kgate"
+	fi
 	rm -f "$tmp"
 	log "interface Proxy0 up (nft table inet kgate)"
 }
@@ -221,6 +260,7 @@ tunnel_down() {
 	if nft list table inet kgate >/dev/null 2>&1; then
 		nft delete table inet kgate 2>/dev/null || fail "nft delete table inet kgate"
 	fi
+	lab_clear proxy0-up
 	log "interface Proxy0 down (nft table inet kgate removed)"
 }
 
@@ -234,7 +274,7 @@ port_listen() {
 # ---- verbs -------------------------------------------------------------------
 
 show_interface() {
-	if nft list table inet kgate >/dev/null 2>&1; then st="up"; else st="down"; fi
+	if nft list table inet kgate >/dev/null 2>&1 || lab_has proxy0-up; then st="up"; else st="down"; fi
 	if port_listen "$SB_PORT"; then conn="yes"; else conn="no"; fi
 	echo "        state: $st"
 	echo "     connected: $conn"
@@ -253,19 +293,29 @@ show_ip_route() {
 	# default route first (never matches the /32 ISP greps), then kernel-truth pins
 	ip route show 2>/dev/null | awk '/^default/ {print "        0.0.0.0/0          ->  " $0; exit}'
 	dev=$(wan_dev)
-	[ -n "$dev" ] || return 0
-	ip route show 2>/dev/null | awk -v d="$dev" '/\/32/ && $0 ~ ("dev " d "( |$)") {
-		gw=""
-		for (i=1; i<=NF; i++) if ($i=="via") gw=$(i+1)
-		printf "%-20s ISP   via %s dev %s\n", $1, (gw==""?"direct":gw), d
-	}'
+	if [ -n "$dev" ]; then
+		ip route show 2>/dev/null | awk -v d="$dev" '/\/32/ && $0 ~ ("dev " d "( |$)") {
+			gw=""
+			for (i=1; i<=NF; i++) if ($i=="via") gw=$(i+1)
+			printf "%-20s ISP   via %s dev %s\n", $1, (gw==""?"direct":gw), d
+		}'
+	fi
+	# LAB: pins recorded but never applied (no NET_ADMIN) still show — the
+	# daemon's pin counter and the lab matrix read this table
+	if [ "$LAB_MODE" = "1" ] && [ -f "$ROUTES_FILE" ]; then
+		while read -r ip_; do
+			[ -n "$ip_" ] || continue
+			ip route show 2>/dev/null | grep -qF "$ip_" || \
+				echo "        ${ip_}/32          ISP   via lab-degrade (recorded, no NET_ADMIN)"
+		done < "$ROUTES_FILE"
+	fi
 }
 
 show_running_config() {
 	echo "# kgate-managed state (openwrt ndm-shim, phase 1) — rendered $(date '+%Y-%m-%d %H:%M:%S')"
 	# Proxy0 object exists while any of its state does (intent marker or runtime table);
 	# a clean system prints no Proxy0 token -> destroy cleanliness LEFT==0
-	if [ -f "$INTENT_FILE" ] || nft list table inet kgate >/dev/null 2>&1; then
+	if [ -f "$INTENT_FILE" ] || nft list table inet kgate >/dev/null 2>&1 || lab_has proxy0-up; then
 		echo "interface Proxy0"
 		echo "     description HYST VPN (sing-box) [kgate openwrt shim]"
 		if nft list table inet kgate >/dev/null 2>&1; then
@@ -307,6 +357,13 @@ policy_drop() {
 		rm -f "$STATE_DIR/policies/$1"
 		log "no ip policy $1"
 	fi
+}
+
+# policy_stub: policy-v2 verbs on OpenWrt are Phase 2 (no ndm binding table
+# here). The failure surface is deliberately CLEAR (ndm dialect + Phase-2 tag):
+# the daemon's ndmcFailed() reads exactly this and the operator sees why.
+policy_stub() {
+	fail "policy-v2 verb — Phase 2 на OpenWrt (ndm-shim): $1 — таблицы привязок ndm здесь нет (docs/dev/policy-v2-design.md)"
 }
 
 # ---- dispatch ----------------------------------------------------------------
@@ -356,6 +413,10 @@ case "$CMD" in
 		[ "$#" -eq 4 ] || fail "syntax: no ip policy <name>"
 		policy_drop "$4"
 		;;
+	"show ip hotspot")              policy_stub "$CMD" ;;
+	"show ip policy")               policy_stub "$CMD" ;;
+	"ip policy"*)                   policy_stub "$CMD" ;;
+	"ip hotspot"*)                  policy_stub "$CMD" ;;
 	*)
 		fail "unknown command: $CMD"
 		;;

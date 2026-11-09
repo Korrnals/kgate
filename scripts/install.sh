@@ -16,6 +16,10 @@
 #        ssh root@192.168.1.1 'curl -fsSL .../install.sh | sh -s -- --platform=openwrt'
 #      No opkg dependency: prerequisites are checked and reported, never
 #      installed (Entware is NOT required).
+#      KGATE_RELEASE_BASE переопределяет источник релиза (зеркало/оффлайн):
+#        http(s)://… — заменяет префикс https://github.com/<REPO>/releases/download
+#        /path/to/dir — файловый оффлайн-режим: архив и checksums копируются из
+#                      каталога (podman-лаба lab/run.sh, аэрогап-инсталляции).
 #
 # For rate-limited environments export GITHUB_TOKEN (optional; the repository
 # is public — anonymous downloads work). KGATE_VERSION pins a release tag.
@@ -104,11 +108,18 @@ install_openwrt() {
     [ -n "$TAG" ] || die "не смог распарсить tag_name — задай KGATE_VERSION=<tag> и повтори"
   fi
   ARCHIVE="kgate_${TAG#v}_linux_${GOARCH}.tar.gz"
-  BASE="https://github.com/${REPO}/releases/download/${TAG}"
-  echo "kgate-install: downloading $BASE/$ARCHIVE"
-  fetch_to "$BASE/$ARCHIVE" "$TMP/$ARCHIVE" || die "скачивание не удалось (https через busybox wget без libustream падает — opkg install curl)"
-
-  fetch_to "$BASE/checksums-sha256.txt" "$TMP/checksums" || true
+  if [ -d "${KGATE_RELEASE_BASE:-}" ]; then
+    # offline release dir (lab/mirror): cp instead of fetch — no network at all
+    echo "kgate-install: локальный релиз: $KGATE_RELEASE_BASE/$ARCHIVE"
+    cp -f "$KGATE_RELEASE_BASE/$ARCHIVE" "$TMP/$ARCHIVE" || die "архива нет в KGATE_RELEASE_BASE: $ARCHIVE"
+    cp -f "$KGATE_RELEASE_BASE/checksums-sha256.txt" "$TMP/checksums" 2>/dev/null || true
+  else
+    BASE="${KGATE_RELEASE_BASE:-https://github.com/${REPO}/releases/download}"
+    BASE="$BASE/$TAG"
+    echo "kgate-install: downloading $BASE/$ARCHIVE"
+    fetch_to "$BASE/$ARCHIVE" "$TMP/$ARCHIVE" || die "скачивание не удалось (https через busybox wget без libustream падает — opkg install curl)"
+    fetch_to "$BASE/checksums-sha256.txt" "$TMP/checksums" || true
+  fi
   if [ -s "$TMP/checksums" ]; then
     (cd "$TMP" && grep " $ARCHIVE\$" checksums | sha256sum -c -) \
       || die "checksum не сошёлся для $ARCHIVE — не ставлю"

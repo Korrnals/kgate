@@ -22,3 +22,6 @@ dist/
 /feed/
 # goreleaser ipk hook output
 .goreleaser-ipk/
+
+# лаба OpenWrt (podman): артефакты прогонов
+lab/work/

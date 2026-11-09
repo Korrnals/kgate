@@ -1,0 +1,84 @@
+#!/bin/sh
+# lab/mock-ndmc — сценарный ndm для миграционной матрицы policy-v2.
+# Выполняется ВНУТРИ контейнера openwrt/rootfs как /bin/ndmc (тень шима):
+# lab/run.sh гоняет НАСТОЯЩИЙ examples/ndm-commands.sh под busybox sh и
+# сверяет выданные команды с таблицей решений из design'а
+# (docs/dev/policy-v2-design.md §New deploy model, back-compat).
+#
+# Состояние: $KGATE_MOCK_STATE/{policies,hotspot.txt} — fixture таблицы
+# привязок (`show ip hotspot`, источник истины по design'у) и объектов
+# политик; `no ip policy X` реально удаляет объект → второй прогон
+# ndm-commands.sh идемпотентен (миграция должна стать no-op).
+# Лог всех команд: $KGATE_MOCK_LOG (run.sh assert-ит на хосте).
+set -u
+STATE="${KGATE_MOCK_STATE:-/tmp/kgate-mock-state}"
+LOG="${KGATE_MOCK_LOG:-/tmp/kgate-mock.log}"
+mkdir -p "$STATE"
+POL="$STATE/policies"
+HOT="$STATE/hotspot.txt"
+# fixture (по design'у): VPN-TV на tv, DIRECT-NOVPN на pc, segment-привязка
+# DIRECT-NOVPN на Bridge2 (SMART, access point — двухсловный ключ!), offline
+# host stale-offline с VPN-Laptops-Phones (привязка переживает offline),
+# sensor в Bridge2 без привязки (пустое поле policy = дефолт).
+[ -f "$POL" ] || printf 'VPN-TV\nVPN-Laptops-Phones\nDIRECT-NOVPN\n' > "$POL"
+[ -f "$HOT" ] || cat > "$HOT" <<'FIXTURE'
+          interface: Bridge0
+             description: "Home"
+                  active: yes
+
+                hostname: "tv"
+                     mac: AA:BB:CC:DD:EE:01
+                  policy: VPN-TV
+                   active: yes
+
+                hostname: "pc"
+                     mac: AA:BB:CC:DD:EE:02
+                  policy: DIRECT-NOVPN
+                   active: yes
+
+          access point: Bridge2 (SMART)
+             description: "SMART segment"
+                  policy: DIRECT-NOVPN
+                hostname: "sensor"
+                     mac: AA:BB:CC:DD:EE:09
+                  policy:
+                   active: yes
+
+          interface: Bridge1
+                hostname: "stale-offline"
+                     mac: AA:BB:CC:DD:EE:03
+                  policy: VPN-Laptops-Phones
+                   active: no
+FIXTURE
+
+# склеиваем аргументы в одну команду (форма вызова: ndmc -c "<verb>")
+CMD=""
+while [ "$#" -gt 0 ]; do
+	if [ "$1" != "-c" ]; then
+		if [ -z "$CMD" ]; then CMD="$1"; else CMD="$CMD $1"; fi
+	fi
+	shift
+done
+echo "$CMD" >> "$LOG"
+
+case "$CMD" in
+	*"show ip hotspot") cat "$HOT" ;;
+	*"show ip policy")
+		while read -r n; do
+			[ -n "$n" ] && echo "             name: $n"
+		done < "$POL"
+		;;
+	*"no ip policy "*)
+		n=${CMD##*no ip policy }
+		# grep -v exits 1 when the LAST name is filtered out — install the
+		# filtered file anyway (only a hard error, rc 2, keeps the old one);
+		# the shim's pin_del documents exactly this lesson
+		grep -vxF "$n" "$POL" > "$POL.tmp" 2>/dev/null
+		[ $? -ne 2 ] && mv "$POL.tmp" "$POL"
+		echo "OK"
+		;;
+	*"show ip route")
+		printf '        0.0.0.0/0          -> default via 192.168.1.1 dev eth0\n'
+		;;
+	*) echo "OK" ;;
+esac
