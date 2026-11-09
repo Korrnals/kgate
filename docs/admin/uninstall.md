@@ -25,7 +25,8 @@ kgate destroy
   init-скрипт, `ndm-commands.sh`, логи;
 - чистит ndm полностью: route-pin'ы (`server_ip`, `77.88.8.8`),
   name-server `77.88.8.8`, **полное удаление интерфейса Proxy0** и
-  политик-сценариев (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN);
+  политик (policy-v2: VPN, NO-VPN; legacy v1: VPN-TV, VPN-Laptops-Phones,
+  DIRECT-NOVPN);
 - контрольный шаг: счётчик следов kgate в running-config — ожидается 0,
   любые остатки помечаются ✗ и роняют команду (`exit 1`).
 

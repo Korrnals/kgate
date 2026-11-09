@@ -39,8 +39,9 @@ preflight, files, migrate, config, ndm, services).
 .B destroy
 снять стек с роутера — полностью, без rudimentов: остановить сервис,
 удалить файлы стека (opkg remove, если ставился пакетом), снять ndm\-пины
-и name\-server, ПОЛНОСТЬЮ удалить интерфейс Proxy0 и политики\-сценарии
-(VPN\-TV, VPN\-Laptops\-Phones, DIRECT\-NOVPN), затем проверить чистоту
+и name\-server, ПОЛНОСТЬЮ удалить интерфейс Proxy0 и политики
+(policy\-v2: VPN, NO\-VPN; legacy v1: VPN\-TV, VPN\-Laptops\-Phones,
+DIRECT\-NOVPN), затем проверить чистоту
 running\-config (остатки = шаг ✗ и код выхода 1).
 Требует подтверждения в терминале; \fB\-\-yes\fR — без вопросов
 (для скриптов), \fB\-\-dry\-run\fR — показать план. Алиас: \fBundeploy\fR.
@@ -61,6 +62,17 @@ running\-config (остатки = шаг ✗ и код выхода 1).
 .TP
 .B toggle <on|off>
 тумблер HYST VPN (Proxy0 up/down).
+.TP
+.B policy
+политики трафика устройств и сегментов (policy\-v2): ровно две политики —
+VPN (через туннель) и NO\-VPN (напрямую); устройство БЕЗ привязки ходит
+напрямую (честный дефолт). Подкоманды: \fBlist\fR (таблица
+hostname/ip/mac/сегмент/политика), \fBdevices\fR, \fBsegments\fR,
+\fBset device <MAC|hostname> <VPN|NO\-VPN|none>\fR,
+\fBset segment <Bridge|имя> <VPN|NO\-VPN|none>\fR,
+\fBall\-vpn\fR (все активные устройства в туннель),
+\fBall\-direct\fR (снять все привязки). Привязка устройства перекрывает
+сегментную; изменения сохраняются в ndm (save).
 .TP
 .B ruexit <on|off>
 RU\-анонимизация: on = global, off = rule (нужен серверный RU\-rule).

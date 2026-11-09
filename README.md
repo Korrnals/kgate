@@ -4,6 +4,8 @@
 
 **KGATE** — единая утилита для VPN-стека на роутерах **Netcraze / Keenetic**:
 демон-супервизор на роутере + mTLS-клиент + деплойер «с нуля до рабочего состояния».
+Политики трафика policy-v2: честный дефолт = провайдер, туннель — по явной привязке
+(`kgate policy`), политики VPN/NO-VPN создаёт деплой.
 
 [![release](https://img.shields.io/badge/release-v1.4.6-4fc3f7)](https://github.com/Korrnals/kgate/releases)
 [![platform](https://img.shields.io/badge/platform-Netcraze%20%2F%20Keenetic-7c8cff)](#поддерживаемые-роутеры)

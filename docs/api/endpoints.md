@@ -38,6 +38,15 @@
 
 - 🔵 `POST /api/v1/ruexit` — режим маршрутизации: Rule ↔ Global (анонимизация)
 
+### Политики трафика — [endpoints-policy.md](endpoints-policy.md)
+
+- 🟢 `GET /api/v1/policy/list` — таблица привязок: устройства + сегменты + политики
+- 🟢 `GET /api/v1/policy/segments` — сегменты с числом устройств
+- 🔵 `POST /api/v1/policy/set-device` — привязка устройства (MAC|hostname) к VPN/NO-VPN/none
+- 🔵 `POST /api/v1/policy/set-segment` — привязка сегмента (Bridge|имя)
+- 🔵 `POST /api/v1/policy/all-vpn` — все активные устройства → VPN
+- 🔵 `POST /api/v1/policy/all-direct` — снять все привязки (всё напрямую)
+
 ### Эксплуатация — [endpoints-logs-reboot.md](endpoints-logs-reboot.md)
 
 - 🟢 `GET /api/v1/logs` — хвост логов демона (plain text)

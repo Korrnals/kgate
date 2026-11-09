@@ -7,6 +7,32 @@ follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- policy-v2: честный дефолт = провайдер, политики VPN/NO-VPN и команда
+  `kgate policy`. Деплой создаёт РОВНО ДВЕ политики — VPN (permit Proxy0,
+  запрет ISP) и NO-VPN (permit ISP, запрет Proxy0) — и ставит Proxy0
+  `ip global 1200`: дефолтный маршрут дома = ISP, устройство БЕЗ привязки
+  ходит НАПРЯМУЮ (fail-safe дом), туннель включается только явной привязкой
+  (`kgate policy set device <MAC> VPN` / `all-vpn`). CLI: `kgate policy
+  list|devices|segments|set device|set segment|all-vpn|all-direct` через
+  mTLS API демона (`/api/v1/policy/{list,segments,set-device,set-segment,
+  all-vpn,all-direct}`); таблица привязок живая (`show ip hotspot`), пустая
+  политика = дефолт. IaC-гарантия честного дефолта: застоявшийся статический
+  `ip route 0.0.0.0/0 Proxy0` сносится и ndm-commands.sh, и стадией ndm
+  (веб «Приоритеты доступов» возвращает его при каждом save) + финальный
+  assert. Back-compat: legacy-эскейпы v1 (VPN-TV, VPN-Laptops-Phones,
+  DIRECT-NOVPN) мигрируются деплоем — привязки (host и segment, включая
+  offline-устройства и двухсловный ключ `access point:`) ре-указываются на
+  NO-VPN, объекты удаляются, итог печатается; второй прогон — no-op.
+  destroy чистит обе эпохи политик. Новый пакет internal/policy: разбор
+  `show ip hotspot`/`show ip policy` + генераторы ndm-вербов (юнит-тесты на
+  fixture'ах: пустая политика, отсутствующий hostname, offline-хост,
+  мульти-хост). OpenWrt-лаба (podman, lab/): verb-покрытие шима с LAB-деградацией
+  (rootless без NET_ADMIN — честные state-маркеры), миграционная матрица
+  (реальный ndm-commands.sh под busybox sh с mock-ndmc), install.sh smoke из
+  локального релиза (новый оффлайн-режим KGATE_RELEASE_BASE=<каталог>);
+  policy-вербы шима отвечают явной Phase-2 заглушкой. Docs: operations.md
+  (переписан per-device раздел), segments-and-policies.md (модель v2),
+  api/endpoints-policy.md, day-to-day.md, glossary, man-страница.
 - openwrt: platform support, Phase 1 (beta) — the Go daemon/deployer are
   unchanged; a POSIX-sh ndm-shim (platform/openwrt/ndmc-shim, installed as
   /usr/bin/ndmc + /bin/ndmc) translates the daemon's ndm verbs to uci/ip/nft:

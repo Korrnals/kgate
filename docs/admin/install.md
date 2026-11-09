@@ -139,8 +139,8 @@ API), route-pins (uci/netifd static routes — переживают reboot и WA
 hotplug reapply), flap self-heal, тумблер/state (nft-таблица `inet kgate`),
 procd-сервис, socks-выдача `:1080`/`:1090` для ручных клиентов.
 **Что НЕ входит (Phase 2):** transparent redirect LAN-клиентов (tproxy/marks —
-нужны `kmod-nft-tproxy` и реальное железо), per-device политики (VPN-TV и
-пр.), dnsmasq-full.
+нужны `kmod-nft-tproxy` и реальное железо), per-device политики (policy-v2:
+VPN/NO-VPN, привязки через `kgate policy`), dnsmasq-full.
 
 Предпосылки (проверяются и репортятся, НИЧЕГО не ставится — opkg руками при
 желании): `nft` + `uci` (ядро 23.05+), рекомендованы `iptables-nft ip6tables-nft

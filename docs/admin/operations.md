@@ -93,7 +93,7 @@ CLI-подъём его не создаёт (для чисто-CLI объект�
 
 | 🔴 Симптом | 🟡 Причина | 🟢 Действие |
 |---|---|---|
-| Тумблер ON, трафик прямой | сегмент/привязка DIRECT-NOVPN у устройства | [segments-and-policies.md](segments-and-policies.md) |
+| Устройство не ходит через туннель, хотя туннель поднят | policy-v2: честный дефолт = напрямую; у устройства нет привязки к VPN либо стоит привязка NO-VPN | `kgate policy list` → `kgate policy set device <MAC> VPN` ([segments-and-policies.md](segments-and-policies.md)) |
 | RU-сайты таймаутят при ON | слетел `bind_interface` на direct-outbound (петля tun2socks) | вернуть `bind_interface: "eth3"` в конфиг sing-box |
 | зарубежные таймаутят | выходной туннель не поднялся | `kgate verify` → лог sing-box; сервер доступен? |
 | DNS не резолвит | снесены DNS-правила | сторож вернёт ≤15 с; вручную `S99kgate`-цикл или `ndmc` |
@@ -125,33 +125,43 @@ CLI-подъём его не создаёт (для чисто-CLI объект�
   выходного IP (`curl -sS https://1.1.1.1/cdn-cgi/trace | grep ip=`)
 - ndmc в PATCH clash API принимает значения в нижнем регистре (`global`/`rule`)
 
-## 🧭 Per-device политики (эскейпы; семантика 08.11)
+## 🧭 Политики трафика (policy-v2; семантика 09.11)
 
-Дефолт — устройство БЕЗ привязки в «Применение политик» — ходит через
-туннель (Proxy0 — дефолт-шлюз). Три политики-сценария — **эскейпы**
-(привязанное устройство идёт НАПРЯМУЮ через провайдера): `VPN-TV` (IPTV-стек),
-`VPN-Laptops-Phones` (стабильные прямые сессии), `DIRECT-NOVPN` (прочее вне
-туннеля). Имена исторические — не переименовывать (биндинги ссылаются на
-имена); их описания в дашборде теперь говорят правду.
+Деплой создаёт РОВНО ДВЕ политики: **VPN** (permit Proxy0, запрет ISP) и
+**NO-VPN** (permit ISP, запрет Proxy0). ЧЕСТНЫЙ ДЕФОЛТ: Proxy0 получает
+`ip global 1200` (дефолт забирает меньший приоритет — ISP 1000), поэтому
+устройство БЕЗ привязки ходит НАПРЯМУЮ через провайдера. Туннель включается
+ТОЛЬКО явной привязкой: дом остаётся fail-safe прямым при любом состоянии
+туннеля. Legacy-эскейпы v1 (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
+мигрируются деплоем автоматически: привязки ре-указываются на NO-VPN,
+объекты удаляются (трафик привязанных при этом не меняется — обе политики
+прямые); устройства, которым нужен туннель, вешаются на VPN вручную или
+массовым режимом.
 
-Управление привязками — только через CLI (веб-вкладка тоже работает, но
-проверяйте результат):
+Управление — через CLI (всё через mTLS API демона; таблица привязок живая,
+`show ip hotspot`):
 ```sh
-# привязать устройство к эскейпу (в обход туннеля):
-ndmc -c "ip hotspot host <MAC> policy DIRECT-NOVPN"
-# снять привязку (атрибут БЕЗ значения! форма с именем даёт parse error):
-ndmc -c "no ip hotspot host <MAC> policy"
-ndmc -c "system configuration save"
+kgate policy list                                  # hostname/ip/mac/сегмент/политика + сегменты
+kgate policy set device <MAC|hostname> <VPN|NO-VPN|none>   # none = снять привязку
+kgate policy set segment <Bridge|имя>  <VPN|NO-VPN|none>   # на весь сегмент
+kgate policy all-vpn                               # ВСЕ активные устройства → VPN
+kgate policy all-direct                            # снять все привязки (всё напрямую)
 ```
-Нюансы: привязки переживают reboot, но НЕ переживают полный `kgate destroy →
-deploy` (политики пересоздаются) — пере-бинд после редеплоя. Диагност:
-устройство с адресом провайдера при поднятой Proxy0 → ищите его MAC в блоке
-`ip hotspot` (`show running-config | grep -A6 "^ip hotspot"`).
+Нюансы: привязка устройства перекрывает привязку сегмента; MAC надёжнее
+hostname (имена бывают неуникальны). Привязки переживают reboot (демон
+делает `system configuration save`), но НЕ переживают полный
+`kgate destroy → deploy` — пере-бинд после редеплоя. Диагност: устройство
+с адресом провайдера при поднятой Proxy0 → ищите его MAC в
+`kgate policy list` (это `show ip hotspot`; running-config привязки НЕ
+отражает). Владелец деплоя несёт IaC-гарантию: застоявшийся статический
+`ip route 0.0.0.0/0 Proxy0` сносится и ndm-commands.sh, и стадией ndm —
+без него веб «Приоритеты доступов» возвращал бы туннель в дефолтную
+политику при каждом сохранении.
 
 ## 🧭 Платформенные границы
 
 - **Keenetic/Netcraze (production)** — вся эта страница описывает ndm-мир:
-  интерфейс Proxy0, route-pins через `ndmc`, политики-сценарии, S99kgate.
+  интерфейс Proxy0, route-pins через `ndmc`, политики VPN/NO-VPN (policy-v2), S99kgate.
 - **OpenWrt 23.05+/24.10 aarch64 (beta, Phase 1)** — демон тот же, но ndm-вербы
   переводит shim `/usr/bin/ndmc` (`platform/openwrt/`): Proxy0 — это nft-таблица
   `inet kgate` (есть = up), пины — uci/netifd static routes + reapply на WAN
@@ -166,5 +176,6 @@ deploy` (политики пересоздаются) — пере-бинд по
 
 - [install.md](install.md) — установка и обновление, бэкап перед пакетными операциями
 - [segments-and-policies.md](segments-and-policies.md) — главный источник «тумблер ON, а трафик прямой»
+- [api/endpoints-policy.md](../api/endpoints-policy.md) — привязки политик через mTLS API
 - [api/endpoints-status-verify.md](../api/endpoints-status-verify.md) — то же через mTLS API
 - [releases.md](releases.md) — если неисправность пережила обновление
