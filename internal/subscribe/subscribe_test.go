@@ -3,6 +3,9 @@ package subscribe
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -256,5 +259,56 @@ func TestMerge_SelectorTagCollisionRenamed(t *testing.T) {
 	}
 	if tags["proxy"] != 1 {
 		t.Fatalf("обычный узел 'proxy' должен сохранить тег: %v", tags)
+	}
+}
+
+// wave-2 F9: политика редиректов подписочного клиента — только https и тот же
+// host: https→http downgrade и чужой host отклонены (утечка URL фида и
+// plaintext-загрузка конфигов).
+func TestFetch_RedirectPolicy(t *testing.T) {
+	final := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("payload-ok"))
+	}))
+	defer final.Close()
+
+	start := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/final" {
+			w.Write([]byte("payload-ok"))
+			return
+		}
+		http.Redirect(w, r, r.URL.Query().Get("to"), http.StatusFound)
+	}))
+	defer start.Close()
+	// прод-политика fetchClient + доверие к тестовому серту start-сервера
+	client := fetchClient()
+	client.Transport = start.Client().Transport
+
+	// ok: редирект на свой же https-путь (тот же host)
+	b, err := fetch(start.URL+"/start?to="+url.QueryEscape(start.URL+"/final"), client)
+	if err != nil {
+		t.Fatalf("same-host https redirect должен пройти: %v", err)
+	}
+	if string(b) != "payload-ok" {
+		t.Fatalf("body = %q", string(b))
+	}
+
+	// отказ: редирект на http (downgrade)
+	httpTarget := "http://" + strings.TrimPrefix(start.URL, "https://") + "/plain"
+	if _, err := fetch(start.URL+"/start?to="+url.QueryEscape(httpTarget), client); err == nil {
+		t.Fatal("редирект на http должен быть отклонён")
+	} else if !strings.Contains(err.Error(), "только https") {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+
+	// отказ: редирект на чужой host (другой тестовый сервер)
+	if _, err := fetch(start.URL+"/start?to="+url.QueryEscape(final.URL+"/elsewhere"), client); err == nil {
+		t.Fatal("редирект на чужой host должен быть отклонён")
+	} else if !strings.Contains(err.Error(), "чужой host") {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+
+	// тот же клиент с прод-политикой отклоняет и редирект-цепочку глубже 1-го шага
+	if _, err := fetch(start.URL+"/start?to="+url.QueryEscape(httpTarget), client); err == nil {
+		t.Fatal("клиент с прод-политикой должен отклонять redirect на http")
 	}
 }

@@ -203,13 +203,17 @@ echo "$v" | head -1`)
 func (r *Runner) Migrate() {
 	fmt.Println("→ deploy: migrate (legacy под замок)")
 	// retire a previous routerctl install (if any); the kgate daemon takes over the stack
-	r.step("retire S99routerctl, глушение S99sing-box/S24xray, чистка rc.unslung", `[ -f /opt/etc/init.d/S99routerctl ] && { /opt/etc/init.d/S99routerctl stop 2>/dev/null; mv /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled; }
+	r.step("retire S99routerctl, глушение S99sing-box/S24xray, чистка rc.unslung", `set -e
+# set -e (wave-2 F2): retire мутирует init-скрипты — тихий частичный провал
+# оставляет легаси живым. Условия — через if/fi (false-условие при set -e
+# скрипт не убивает), killall без процесса — явный || true.
+if [ -f /opt/etc/init.d/S99routerctl ]; then /opt/etc/init.d/S99routerctl stop 2>/dev/null; mv /opt/etc/init.d/S99routerctl /opt/etc/init.d/S99routerctl.disabled; fi
 rm -f /opt/var/run/routerctl*.pid /opt/var/run/routerctl.pid
-[ -f /opt/etc/init.d/S99sing-box ] && mv /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled
+if [ -f /opt/etc/init.d/S99sing-box ]; then mv /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled; fi
 grep -vE "(rc-redirect|boot-autoup|\{kgate\})" /opt/etc/init.d/rc.unslung > /tmp/rcu && cat /tmp/rcu > /opt/etc/init.d/rc.unslung && rm /tmp/rcu
 for P in $(ps w | grep "[r]c-redirect-watchdog" | awk "{print \$1}"); do kill $P 2>/dev/null; done   # bracket-trick: не матчим собственный sh (wave-1 C7)
-[ -f /opt/etc/init.d/S24xray ] && mv /opt/etc/init.d/S24xray /opt/etc/init.d/S24xray.disabled
-killall xray 2>/dev/null
+if [ -f /opt/etc/init.d/S24xray ]; then mv /opt/etc/init.d/S24xray /opt/etc/init.d/S24xray.disabled; fi
+killall xray 2>/dev/null || true
 echo "legacy disabled"`)
 }
 
@@ -253,14 +257,21 @@ func (r *Runner) NDM() {
 	// `ip route 0.0.0.0/0 Proxy0` — а дефолтная политика с ним смотрит не
 	// только на ISP. Явный un-route ПОСЛЕ ndm-commands.sh (там он тоже есть)
 	// — IaC-гарантия честного дефолта = ISP.
-	r.step("un-route stale 0.0.0.0/0 Proxy0 (честный дефолт = ISP)", `ndmc -c "no ip route 0.0.0.0/0 Proxy0"; n=$(ndmc -c "show ip route" | grep -c "0.0.0.0/0.*Proxy0"); [ "$n" = "0" ] && echo "default policy: ISP only (ok)" || echo "WARNING: 0.0.0.0/0 Proxy0 всё ещё в таблице ($n) — проверь веб «Приоритеты доступов»"`)
+	// set -e (wave-2 F2); grep -c при нуле совпадений выходит 1 — || true в
+	// $(…) не даёт set -e убить шаг
+	r.step("un-route stale 0.0.0.0/0 Proxy0 (честный дефолт = ISP)", `set -e
+ndmc -c "no ip route 0.0.0.0/0 Proxy0"; n=$(ndmc -c "show ip route" | grep -c "0.0.0.0/0.*Proxy0" || true); [ "$n" = "0" ] && echo "default policy: ISP only (ok)" || echo "WARNING: 0.0.0.0/0 Proxy0 всё ещё в таблице ($n) — проверь веб «Приоритеты доступов»"`)
 	// system configuration save ПОСЛЕ подъёма Proxy0: веб-переключатель читает
 	// конфиг-вью (show.sc.interface up), и для объекта, хоть раз тронутого
 	// вебом/RCI, up-узел в нём материализуется ТОЛЬКО явным save — без него
 	// тумблер в дашборде рисует OFF при рабочем туннеле (см. investigate:
 	// kgate-session-reports/tumbler-verdict.md). Save также фиксирует intent
 	// "up" во flash — после ребута ОС уважает его.
-	r.step("system configuration save (веб-модель тумблера + intent up)", `ndmc -c "system configuration save" && echo saved
+	r.step("system configuration save (веб-модель тумблера + intent up)", `set -e
+# set -e + явный ассерт (wave-2 F2): провал save стопает шаг ДО записи intent —
+# иначе intent=up пишется при НЕсохранённом флеше и переживает ребут ложью
+ndmc -c "system configuration save" || { echo "ndmc save FAILED — intent НЕ записывается"; exit 1; }
+echo saved
 mkdir -p /opt/etc/kgate
 # ГРОМКОЕ предупреждение при перевороте явно выключенного владельцем туннеля (wave-1 B4):
 if [ -f /opt/etc/kgate/intent ] && [ "$(cat /opt/etc/kgate/intent 2>/dev/null)" = "down" ]; then
@@ -278,8 +289,11 @@ func (r *Runner) Services() {
 	// (переживший killall) больше НЕ усыновляется свежим демоном: перед
 	// стартом демона глушим движки и чистим их pidfiles, иначе конфиги,
 	// заменённые files-стадией, не вступают в силу
-	r.step("S99kgate stop + свежий движок + start + статус", `/opt/etc/init.d/S99kgate stop >/dev/null 2>&1; sleep 1
-killall -9 sing-box xray 2>/dev/null
+	r.step("S99kgate stop + свежий движок + start + статус", `set -e
+# set -e (wave-2 F2); stop/killall «нет процесса» легитимен — || true,
+# финальный status остаётся честным гейтом шага
+/opt/etc/init.d/S99kgate stop >/dev/null 2>&1 || true; sleep 1
+killall -9 sing-box xray 2>/dev/null || true
 rm -f /opt/var/run/kgate-singbox.pid /opt/var/run/kgate-xray.pid /opt/var/run/singbox.pid
 sleep 1
 /opt/etc/init.d/S99kgate start
@@ -350,12 +364,20 @@ mv -f /opt/etc/sing-box/config.json.new /opt/etc/sing-box/config.json && echo sw
 // main.go): stop the service, remove the stack files, delete the ndm objects
 // (Proxy0 interface AND scenario policies — no rudiments left behind) and
 // verify the running-config is clean.
+// platformIsOpenWrt classifies the remote platform-detect echo. Exact match
+// after TrimSpace: a substring match on "openwrt" also hits "non-openwrt" —
+// the echo of Keenetic/Entware, the PRIMARY deploy target — which made
+// `kgate destroy` deterministically refuse there (cascade wave-2, P1).
+func platformIsOpenWrt(out string) bool {
+	return strings.TrimSpace(out) == "openwrt"
+}
+
 func (r *Runner) Destroy() {
 	// honest refusal on OpenWrt (wave-1 D3): destroy описан под Keenetic/Entware —
 	// rm -rf /opt/etc/kgate на OpenWrt снимает симлинк, содержимое /etc/kgate
 	// (intent) выживает, cleanliness-gate падает ложью; init/hotplug/shim остаются.
 	out := r.step("детект платформы (OpenWrt → честный отказ)", `[ -f /etc/openwrt_release ] && echo openwrt || echo non-openwrt`)
-	if strings.Contains(out, "openwrt") {
+	if platformIsOpenWrt(out) {
 		r.fatal("destroy на OpenWrt НЕ поддержан (полный destroy — задача field E2E). Удали вручную:\n" +
 			"      /etc/init.d/kgate disable && rm -f /etc/init.d/kgate\n" +
 			"      rm -f /etc/hotplug.d/iface/50-kgate-pins /usr/bin/ndmc /bin/ndmc /usr/bin/kgate\n" +

@@ -156,8 +156,9 @@ func socksFetchIP(c *model.Config) (string, error) {
 }
 
 func Toggle(c *model.Config, state string) {
-	b, _ := api(c, "POST", "/api/v1/toggle",
+	b, code := api(c, "POST", "/api/v1/toggle",
 		strings.NewReader(`{"state":"`+state+`"}`))
+	b = apiAssertOK(code, b) // wave-2 F3: 500 от демона не должен выглядеть успехом
 	fmt.Println("=== toggle", state, "===")
 	fmt.Println(pretty(b))
 }
@@ -296,14 +297,16 @@ func PolicyAllDirect(c *model.Config) {
 }
 
 func Ruexit(c *model.Config, mode string) {
-	b, _ := api(c, "POST", "/api/v1/ruexit",
+	b, code := api(c, "POST", "/api/v1/ruexit",
 		strings.NewReader(`{"mode":"`+mode+`"}`))
+	b = apiAssertOK(code, b) // wave-2 F3
 	fmt.Println("=== ruexit (", mode, ") ===")
 	fmt.Println(pretty(b))
 }
 
 func Logs(c *model.Config) {
-	b, _ := api(c, "GET", "/api/v1/logs", nil)
+	b, code := api(c, "GET", "/api/v1/logs", nil)
+	b = apiAssertOK(code, b) // wave-2 F3: единая дисциплина exit-кодов
 	fmt.Println(string(b))
 }
 

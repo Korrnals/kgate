@@ -443,6 +443,16 @@ func ndmcFailed(out string) bool {
 	return strings.Contains(o, "system failed") || strings.Contains(o, "invalid") || strings.Contains(o, "err(")
 }
 
+// ndmExecFailed is the SHOW-path matcher (wave-2 F5): PREFIX-only matching.
+// A failed exec surfaces as the sh()/ndmc() "ERR(" prefix; an ndmc that ran
+// but failed reports "[C] ndm: Cli::Main: system failed" at the very start
+// of the output. Verdict-verbs (bind/save/toggle) use ndmcFailed; SHOW
+// output must NOT be word-matched — a legitimate hostname/policy containing
+// "invalid" or "err(" would false-500.
+func ndmExecFailed(out string) bool {
+	return strings.HasPrefix(out, "ERR(") || strings.HasPrefix(out, "[C] ndm")
+}
+
 // ---- tunnel ----
 
 func (d *Daemon) toggle(state string) string {
@@ -669,7 +679,7 @@ func (d *Daemon) Run() error {
 
 // toggleHandler is the /api/v1/toggle endpoint (extracted for tests, wave-1 A3).
 func (d *Daemon) toggleHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return postOnly(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			State string `json:"state"`
 		}
@@ -687,7 +697,13 @@ func (d *Daemon) toggleHandler() http.HandlerFunc {
 		// verb ("up"/"down"), not the API state word (kgate.init, ndmc-shim,
 		// intentDown all compare against "down").
 		if err := os.WriteFile(d.intentFile(), []byte(verb+"\n"), 0644); err != nil {
-			fmt.Printf("kgate: intent write FAILED (%s): %v\n", d.intentFile(), err)
+			// wave-2 F4: the off-switch contract requires the intent to land
+			// BEFORE the mutation — a failed write must abort the toggle
+			// entirely (no ndmc call, no 200): an unrecorded "down" would be
+			// re-raised by flapSelfHeal while the client saw success.
+			fmt.Printf("kgate: intent write FAILED (%s): %v — toggle прерван\n", d.intentFile(), err)
+			http.Error(w, fmt.Sprintf("запись intent (%s) не удалась: %v — toggle НЕ выполнен (off-switch не удержится)", d.intentFile(), err), http.StatusInternalServerError)
+			return
 		}
 		out := d.toggle(verb)
 		if ndmcFailed(out) {
@@ -701,6 +717,20 @@ func (d *Daemon) toggleHandler() http.HandlerFunc {
 		_ = d.ndm("system configuration save")
 		time.Sleep(5 * time.Second)
 		json.NewEncoder(w).Encode(map[string]string{"ndmc": out, "proxy0": d.proxyState()})
+	})
+}
+
+// postOnly enforces the mutate method discipline (wave-2 F10): non-POST gets
+// 405 + Allow before the handler body runs, so a GET (link-preview/crawler)
+// can never fire a mutation. Mirrors the policy mutate() wrapper.
+func postOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "метод "+r.Method+" запрещён: endpoint мутирует — используй POST", http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -728,8 +758,8 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(d.status())
 	})
-	mux.Handle("/api/v1/toggle", d.toggleHandler())
-	mux.HandleFunc("/api/v1/ruexit", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/v1/toggle", postOnly(d.toggleHandler()))
+	mux.HandleFunc("/api/v1/ruexit", postOnly(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Mode string `json:"mode"`
 		}
@@ -743,7 +773,7 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]string{"mode": d.clashMode()})
-	})
+	}))
 	mux.HandleFunc("/api/v1/verify", func(w http.ResponseWriter, r *http.Request) {
 		rep := d.mgr.ensure()
 		json.NewEncoder(w).Encode(map[string]any{"status": d.status(), "supervisor": rep})
@@ -754,12 +784,12 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 			strconv.Quote(d.cfg.Daemon.Log), strconv.Quote(boot)))
 		fmt.Fprintln(w, out)
 	})
-	mux.HandleFunc("/api/v1/reboot", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/reboot", postOnly(func(w http.ResponseWriter, r *http.Request) {
 		out := d.ndmc("system reboot")
 		json.NewEncoder(w).Encode(map[string]string{"ndmc": out})
 		time.Sleep(time.Second)
 		os.Exit(0)
-	})
+	}))
 	d.registerPolicyHandlers(mux, logger)
 
 	srv := &http.Server{Addr: d.cfg.Daemon.APIListen, Handler: mux, TLSConfig: tlsCfg,

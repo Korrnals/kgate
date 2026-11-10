@@ -448,15 +448,40 @@ func atoi(s string, def int) int {
 	return def
 }
 
+// fetchClient builds the subscription HTTP client with a redirect policy
+// (wave-2 F9): only https, same host as the original URL — an https→http
+// downgrade or a bounce to a foreign host would leak the subscription URL
+// (credentials) and fetch configs over plaintext.
+func fetchClient() *http.Client {
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 { // стандартный потолок http.Client
+				return fmt.Errorf("остановлен после %d редиректов", len(via))
+			}
+			if req.URL.Scheme != "https" {
+				return fmt.Errorf("редирект на %s отклонён: только https (downgrade = утечка фида)", req.URL)
+			}
+			if req.URL.Host != via[0].URL.Host {
+				return fmt.Errorf("редирект на чужой host %s отклонён", req.URL.Host)
+			}
+			return nil
+		},
+	}
+}
+
 // Fetch downloads a subscription payload (provider endpoint).
 func Fetch(url string) ([]byte, error) {
+	return fetch(url, fetchClient())
+}
+
+func fetch(url string, client *http.Client) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "kgate/1.4")
 	req.Header.Set("Accept", "*/*")
-	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

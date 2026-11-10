@@ -37,7 +37,7 @@ func isClientPolicyErr(err error) bool {
 // surface the error as a 500.
 func (d *Daemon) hotspotTable() (policy.Table, error) {
 	out := d.ndm(policy.ShowHotspotCmd)
-	if ndmcFailed(out) {
+	if ndmExecFailed(out) { // wave-2 F5: SHOW-путь — только exec-сбой, не вербальный матч
 		return policy.Table{}, fmt.Errorf("ndmc не ответил на %q: %s", policy.ShowHotspotCmd, strings.TrimSpace(out))
 	}
 	return policy.ParseHotspot(out), nil
@@ -47,23 +47,27 @@ func (d *Daemon) hotspotTable() (policy.Table, error) {
 // wave-1 C1, same as hotspotTable).
 func (d *Daemon) policyNames() ([]string, error) {
 	out := d.ndm(policy.ShowPolicies)
-	if ndmcFailed(out) {
+	if ndmExecFailed(out) { // wave-2 F5: SHOW-путь — только exec-сбой, не вербальный матч
 		return nil, fmt.Errorf("ndmc не ответил на %q: %s", policy.ShowPolicies, strings.TrimSpace(out))
 	}
 	return policy.ParsePolicies(out), nil
 }
 
-func (d *Daemon) policyExists(name string) bool {
+// policyExists reports whether the ndm policy object exists. An ndmc failure
+// is PROPAGATED (wave-2 F7): swallowing it into "false" made set-device/
+// set-segment answer "политика не найдена — сначала kgate deploy" while ndmc
+// was actually down — callers surface it as a 500 instead.
+func (d *Daemon) policyExists(name string) (bool, error) {
 	ns, err := d.policyNames()
 	if err != nil {
-		return false // caller sees the real error via hotspotTable/policyNames surfaces
+		return false, err
 	}
 	for _, n := range ns {
 		if n == name {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // validTarget checks the API policy enum (VPN|NO-VPN|none).
@@ -177,7 +181,9 @@ func (d *Daemon) policySetDevice(target, pol string) (map[string]any, error) {
 	bind := pol
 	if pol == policy.PolicyNone {
 		bind = ""
-	} else if !d.policyExists(pol) {
+	} else if exists, err := d.policyExists(pol); err != nil {
+		return nil, err // ndmc down → 500 с ndm-поверхностью (wave-2 F7)
+	} else if !exists {
 		return nil, userErrf("политика %s не найдена в ndm (show ip policy) — сначала kgate deploy: ndm-commands.sh v2 создаёт VPN/NO-VPN", pol)
 	}
 	// idempotence (wave-1 C6): the binding already matches — no bind verb,
@@ -225,7 +231,9 @@ func (d *Daemon) policySetSegment(target, pol string) (map[string]any, error) {
 	bind := pol
 	if pol == policy.PolicyNone {
 		bind = ""
-	} else if !d.policyExists(pol) {
+	} else if exists, err := d.policyExists(pol); err != nil {
+		return nil, err // ndmc down → 500 с ndm-поверхностью (wave-2 F7)
+	} else if !exists {
 		return nil, userErrf("политика %s не найдена в ndm (show ip policy) — сначала kgate deploy: ndm-commands.sh v2 создаёт VPN/NO-VPN", pol)
 	}
 	// idempotence (wave-1 C6): see policySetDevice
@@ -254,7 +262,11 @@ func (d *Daemon) policySetSegment(target, pol string) (map[string]any, error) {
 // Already-bound and offline hosts are skipped without ndmc writes; per-host
 // ndm rejections are collected, not fatal — the summary stays honest.
 func (d *Daemon) policyAllVPN() (map[string]any, error) {
-	if !d.policyExists(policy.PolicyVPN) {
+	exists, err := d.policyExists(policy.PolicyVPN)
+	if err != nil {
+		return nil, err // ndmc down → 500 с ndm-поверхностью (wave-2 F7)
+	}
+	if !exists {
 		return nil, userErrf("политика VPN не найдена в ndm — сначала kgate deploy (ndm-commands.sh v2)")
 	}
 	tbl, err := d.hotspotTable()

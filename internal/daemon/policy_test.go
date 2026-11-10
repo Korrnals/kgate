@@ -354,9 +354,6 @@ func TestPolicySetDevice_Idempotent_NoRewrite(t *testing.T) {
 	d.ndmcFn = func(cmd string) string {
 		if cmd == bind {
 			fake.responses["show ip hotspot"] = strings.Replace(
-				policyFixtureHotspot, "mac: aa:bb:cc:dd:ee:ff",
-				"mac: aa:bb:cc:dd:ee:ff", 1)
-			fake.responses["show ip hotspot"] = strings.Replace(
 				policyFixtureHotspot,
 				"mac: aa:bb:cc:dd:ee:ff\n                      ip: 192.168.2.20\n                  policy:",
 				"mac: aa:bb:cc:dd:ee:ff\n                      ip: 192.168.2.20\n                  policy: VPN", 1)

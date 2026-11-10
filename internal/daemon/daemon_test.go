@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -562,5 +564,114 @@ func TestToggleHandler_NdmcFailed_500(t *testing.T) {
 	b, _ := os.ReadFile(d.intentPath)
 	if string(b) != "down\n" {
 		t.Fatalf("intent должен пережить ndmc-отказ: %q", string(b))
+	}
+}
+
+// wave-2 F4: провал записи intent — 500 и ПОЛНЫЙ abort: ndmc-мутации не было.
+// Off-switch контракт: intent обязан приземлиться ДО мутации, иначе «down»
+// перебьёт flapSelfHeal, а клиент увидит 200.
+func TestToggleHandler_IntentWriteFailed_Aborts500_NoNdmc(t *testing.T) {
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "no-such-dir", "intent") // недоступный путь
+	req := httptest.NewRequest("POST", "/api/v1/toggle", strings.NewReader(`{"state":"off"}`))
+	rec := httptest.NewRecorder()
+	d.toggleHandler()(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("code = %d, want 500 (провал записи intent)", rec.Code)
+	}
+	for _, c := range fake.cmds {
+		if strings.HasPrefix(c, "interface Proxy0") {
+			t.Fatalf("toggle выполнен вопреки провалу записи intent: %v", fake.cmds)
+		}
+	}
+	if len(fake.cmds) != 0 {
+		t.Fatalf("ожидались только show-команды после abort, было: %v", fake.cmds)
+	}
+}
+
+// wave-2 F10: mutate-эндпоинты (toggle/ruexit/reboot) — POST-only, GET = 405
+// + Allow, мутация не выполняется.
+func TestMutateEndpoints_GET_Rejected405(t *testing.T) {
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "intent")
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/toggle", postOnly(d.toggleHandler()))
+	mux.HandleFunc("/api/v1/ruexit", postOnly(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "не должен вызываться", 500)
+	}))
+	mux.HandleFunc("/api/v1/reboot", postOnly(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "не должен вызываться", 500)
+	}))
+	srv := httptest.NewTLSServer(mux)
+	defer srv.Close()
+	client := srv.Client()
+	for _, path := range []string{"/api/v1/toggle", "/api/v1/ruexit", "/api/v1/reboot"} {
+		resp, err := client.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("%s: GET code = %d, want 405 (body=%s)", path, resp.StatusCode, string(b))
+		}
+		if allow := resp.Header.Get("Allow"); allow != "POST" {
+			t.Fatalf("%s: Allow = %q, want POST", path, allow)
+		}
+	}
+	for _, c := range fake.cmds {
+		if strings.HasPrefix(c, "interface Proxy0") || strings.Contains(c, "reboot") {
+			t.Fatalf("GET выполнил мутацию: %v", fake.cmds)
+		}
+	}
+}
+
+// wave-2 F5: SHOW-вывод с легитимным hostname/именем политики, содержащим
+// "invalid"/"err(" — НЕ сбой ndmc (вербальный матч давал ложный 500). Сбой
+// exec по-прежнему детектится по префиксу "ERR(".
+func TestShowPaths_WordMatch_NotAFailure(t *testing.T) {
+	d, _ := policyTestDaemon(t)
+	d.ndmcFn = func(cmd string) string {
+		if cmd == "show ip hotspot" {
+			return strings.Replace(policyFixtureHotspot, `hostname: "pixel-phone"`, `hostname: "pixel-invalid-box"`, 1)
+		}
+		if cmd == "show ip policy" {
+			return "             name: VPN-err(monitor)\n             name: NO-VPN"
+		}
+		return ""
+	}
+	if _, err := d.hotspotTable(); err != nil {
+		t.Fatalf("hostname с \"invalid\" в SHOW-выводе — не сбой: %v", err)
+	}
+	if _, err := d.policyNames(); err != nil {
+		t.Fatalf("имя политики с \"err(\" в SHOW-выводе — не сбой: %v", err)
+	}
+	// а настоящий exec-сбой (префикс ERR( от sh()/ndmc()) по-прежнему 500
+	d.ndmcFn = func(string) string { return "ERR(exec: exit status 1): " }
+	if _, err := d.hotspotTable(); err == nil {
+		t.Fatal("префикс ERR( должен детектироваться как сбой exec")
+	}
+}
+
+// wave-2 F7: упавший ndmc на show ip policy — 500-ошибка с ndm-поверхностью,
+// а не user-ошибка «политика не найдена — сначала kgate deploy».
+func TestPolicyExists_NdmcDown_PropagatesError(t *testing.T) {
+	d, _ := policyTestDaemon(t)
+	d.ndmcFn = func(cmd string) string {
+		if cmd == "show ip policy" {
+			return "[C] ndm: Cli::Main: system failed [0xcffd00d9]"
+		}
+		return policyFixtureHotspot
+	}
+	_, err := d.policyExists("VPN")
+	if err == nil {
+		t.Fatal("policyExists должен пробрасывать ошибку policyNames")
+	}
+	_, err = d.policySetDevice("smart-tv", "VPN")
+	if err == nil {
+		t.Fatal("set-device при упавшем ndmc должен вернуть ошибку")
+	}
+	if isClientPolicyErr(err) {
+		t.Fatalf("ошибка ndmc ошибочно классифицирована как user-ошибка (400 вместо 500): %v", err)
 	}
 }
