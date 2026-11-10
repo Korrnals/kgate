@@ -4,21 +4,67 @@ All notable changes to kgate are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/); the project
 follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.6.0] - 2026-11-10
+
+kgate v1.6.0: the tunnel off-switch actually works now, the deploy path
+fails loudly instead of lying green, and the management API/CLI follow
+strict method and exit-code discipline. Shipped after a four-wave cascade
+review (two consecutive clean waves from both the security and the
+quality/architecture auditors).
+
+### Fixed
+- **The documented off-switch is now real.** Since 1.4.4 the docs promised
+  that `kgate toggle off` persists and survives the flap self-heal — the
+  implementation wrote a different word to the intent file than every
+  reader expected, so the self-heal raised the tunnel back within one
+  15-second tick. The vocabulary is unified (`up`/`down`), the intent is
+  written before the tunnel is toggled, a failed intent write aborts the
+  toggle with a clear 500, and boot auto-up respects an operator-set
+  `down` on both platforms.
+- `kgate destroy` no longer mis-detects the platform (a substring check
+  matched "non-openwrt"); detection is now fail-closed — an ambiguous
+  answer refuses the destroy instead of guessing.
+- Deploy steps unpack/migrate/save/serve with `set -e` plus explicit
+  asserts: a failed `ndmc system configuration save` no longer produces a
+  green step with an unsaved flash, and the intent file is only written
+  after the save succeeded.
 
 ### Changed
-- `kgate apply` (PushConfig): первый push при отсутствующем на роутере живом
-  `/opt/etc/sing-box/config.json` теперь ГРОМКО аборится ("backup FAILED",
-  шаг падает) — раньше `mv -f` молча создавал файл и маскировал отсутствие
-  предыдущего конфига. Для чистой установки сначала выполняется полный
-  deploy (files — заливает конфиг), а не обновление конфига поверх пустоты.
-- Phase 2 scaffolding honesty: `platform/openwrt/{nft-kgate.conf,
-  sing-box-client.json,traffic-setup.sh}` — заготовки tproxy traffic-path;
-  в install/init/shim они НЕ подключены, в релизные архивы не входят,
-  рабочего traffic-path они не добавляют. Шапки файлов переписаны честно
-  (wire-up планируется на field E2E, Flint 2); `sing-box-client.json` —
-  валидный JSON (порт-плейсхолдер закавычен), `insecure:true` помечен как
-  лаб-вариант.
+- **Subscription feeds are https-only** (including redirects: same host,
+  up to 10 hops; cross-host/CDN redirects are rejected with a clear
+  error). If your feed URL starts with `http://`, switch it to `https://`
+  — feed credentials travel in the URL and must not go out in plaintext.
+- Mutating API endpoints (`/api/v1/policy/*`, toggle, ruexit, reboot) are
+  POST-only (405 otherwise). All behind the existing mTLS gate.
+- CLI commands exit non-zero when the daemon reports an error (previously
+  they printed the error and exited 0, breaking scripts).
+- Policy binding is genuinely idempotent: re-binding a device/segment to
+  its current policy sends no ndm writes and no flash save.
+- `kgate apply` aborts loudly on the first push when no live config exists
+  on the router (previously masked by a silent `mv`); run a full deploy
+  for clean installs.
+- OpenWrt installer hardening: checksums are mandatory (fail-loud),
+  sing-box tarball sha256 is pinned, `KGATE_RELEASE_BASE` must be https,
+  config files land 0600 (umask 077).
+- `destroy` on OpenWrt refuses with step-by-step manual cleanup guidance
+  instead of half-removing (full OpenWrt destroy comes with the field
+  validation wave).
+
+### Known scope
+- The Phase 2 traffic-path files (`platform/openwrt/{nft-kgate.conf,
+  sing-box-client.json,traffic-setup.sh}`) are scaffolding: they are NOT
+  wired into install/init/shim, are not part of the release archives, and
+  add no working traffic path yet. Wire-up is planned for the field
+  validation on real hardware.
+
+### Verification
+Full test suite (`go test -race -count=1`, all packages) green on the
+release commit; `go vet` and govulncheck clean (0 called vulnerabilities);
+fresh suite re-run personally before merge. Review: four cascade waves —
+P1 findings in waves 1–2 fixed and re-audited; waves 3–4 clean from both
+auditors. Six new regression tests cover the fixes above.
+
+## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
 
