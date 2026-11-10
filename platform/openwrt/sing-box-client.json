@@ -1,0 +1,21 @@
+{
+  "log": {"level": "info"},
+  "route": {"default_mark": 100},
+  "inbounds": [
+    {
+      "type": "tproxy",
+      "listen": "::",
+      "listen_port": 7893,
+      "sniff": false
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "server": "HYST_SERVER_PLACEHOLDER",
+      "server_port": HYST_SERVER_PORT_PLACEHOLDER,
+      "password": "HYST_PASSWORD_PLACEHOLDER",
+      "tls": {"enabled": true, "insecure": true}
+    }
+  ]
+}
