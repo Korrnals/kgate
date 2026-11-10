@@ -77,30 +77,34 @@ func assertCmds(t *testing.T, fake *fakeNDM, want []string, label string) {
 
 func TestPolicySetDevice_ByHostname_BindsVPN(t *testing.T) {
 	d, fake := policyTestDaemon(t)
-	out, err := d.policySetDevice("pixel-phone", "VPN")
+	// pixel-phone is ALREADY VPN in the fixture → bind NO-VPN (a VPN bind
+	// would hit the idempotent path, wave-1 C6)
+	out, err := d.policySetDevice("pixel-phone", "NO-VPN")
 	if err != nil {
 		t.Fatalf("set device: %v", err)
 	}
-	if out["ndmc"] != "ip hotspot host 5c:eb:f6:aa:bb:01 policy VPN" {
+	if out["ndmc"] != "ip hotspot host 5c:eb:f6:aa:bb:01 policy NO-VPN" {
 		t.Errorf("ndmc = %v", out["ndmc"])
 	}
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
 		"show ip policy",
-		"ip hotspot host 5c:eb:f6:aa:bb:01 policy VPN",
+		"ip hotspot host 5c:eb:f6:aa:bb:01 policy NO-VPN",
 		"system configuration save",
 	}, "bind-vpn")
 }
 
 func TestPolicySetDevice_None_UnbindAttrForm(t *testing.T) {
 	d, fake := policyTestDaemon(t)
-	// design ground truth: unbind is the attribute form, NOT `no policy <NAME>`
-	if _, err := d.policySetDevice("aa:bb:cc:dd:ee:ff", "none"); err != nil {
+	// design ground truth: unbind is the attribute form, NOT `no policy <NAME>`.
+	// pixel-phone is bound (VPN) in the fixture — unbinding smart-tv would now
+	// hit the idempotent path (wave-1 C6) and write nothing.
+	if _, err := d.policySetDevice("5c:eb:f6:aa:bb:01", "none"); err != nil {
 		t.Fatalf("unbind: %v", err)
 	}
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
-		"ip hotspot host aa:bb:cc:dd:ee:ff no policy",
+		"ip hotspot host 5c:eb:f6:aa:bb:01 no policy",
 		"system configuration save",
 	}, "unbind")
 }
@@ -156,12 +160,12 @@ func TestPolicySetSegment_ByName(t *testing.T) {
 	if out["ndmc"] != "ip hotspot Bridge0 policy NO-VPN" {
 		t.Errorf("ndmc = %v", out["ndmc"])
 	}
-	if _, err := d.policySetSegment("bridge1", "none"); err != nil { // by token
+	if _, err := d.policySetSegment("bridge1", "VPN"); err != nil { // by token
 		t.Fatalf("unbind segment: %v", err)
 	}
 	assertCmds(t, fake, []string{
 		"show ip hotspot", "show ip policy", "ip hotspot Bridge0 policy NO-VPN", "system configuration save",
-		"show ip hotspot", "ip hotspot Bridge1 no policy", "system configuration save",
+		"show ip hotspot", "show ip policy", "ip hotspot Bridge1 policy VPN", "system configuration save",
 	}, "segment")
 }
 
@@ -203,7 +207,10 @@ func TestPolicyAllDirect_UnbindsAllBound(t *testing.T) {
 
 func TestPolicyList_Shape(t *testing.T) {
 	d, _ := policyTestDaemon(t)
-	rep := d.policyList()
+	rep, err := d.policyList()
+	if err != nil {
+		t.Fatal(err)
+	}
 	pols, _ := rep["policies"].([]string)
 	if len(pols) != 2 || pols[0] != "VPN" || pols[1] != "NO-VPN" {
 		t.Errorf("policies = %v", rep["policies"])
@@ -243,9 +250,9 @@ func TestPolicyHandlers_HTTP(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// GET on a mutating endpoint: 400, no mutation
-	if resp, err = http.Get(srv.URL + "/api/v1/policy/set-device"); err != nil || resp.StatusCode != 400 {
-		t.Fatalf("GET set-device must 400: %v %v", resp, err)
+	// GET on a mutating endpoint: 405 (POST-only, wave-1 C2), no mutation
+	if resp, err = http.Get(srv.URL + "/api/v1/policy/set-device"); err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET set-device must 405: %v %v", resp, err)
 	}
 	resp.Body.Close()
 
@@ -292,4 +299,90 @@ type policyListReplyShape struct {
 		Name  string `json:"name"`
 		Hosts int    `json:"hosts"`
 	} `json:"segments"`
+}
+
+// wave-1 C1: ndmc down на show-командах — это 500-grade ошибка, а не «успех»
+// с пустой таблицей (bound=0/total=0 была тихая деградация).
+func TestPolicyViews_NdmcFailed_IsError(t *testing.T) {
+	d, _ := policyTestDaemon(t)
+	d.ndmcFn = func(cmd string) string {
+		if cmd == "show ip hotspot" || cmd == "show ip policy" {
+			return "[C] ndm: Cli::Main: system failed [0xcffd00d9]"
+		}
+		return ""
+	}
+	if _, err := d.policyList(); err == nil {
+		t.Fatal("policyList при упавшем ndmc должен возвращать ошибку (500), а не пустую таблицу")
+	}
+	if _, err := d.hotspotTable(); err == nil {
+		t.Fatal("hotspotTable при упавшем ndmc должен возвращать ошибку")
+	}
+	if _, err := d.policyNames(); err == nil {
+		t.Fatal("policyNames при упавшем ndmc должен возвращать ошибку")
+	}
+}
+
+// wave-1 C2: mutating endpoints POST-only; GET (линк-превью/краулер) — 405,
+// мутация не выполняется вовсе.
+func TestPolicyMutate_GET_Rejected405(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	mux := http.NewServeMux()
+	d.registerPolicyHandlers(mux, func(string) {})
+	for _, path := range []string{"/api/v1/policy/all-vpn", "/api/v1/policy/all-direct", "/api/v1/policy/set-device"} {
+		req := httptest.NewRequest("GET", path, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("GET %s: code = %d, want 405", path, rec.Code)
+		}
+	}
+	for _, c := range fake.cmds {
+		if strings.HasPrefix(c, "ip hotspot") || c == "system configuration save" {
+			t.Fatalf("GET по мутирующему endpoint выполнил ndmc-запись: %v", fake.cmds)
+		}
+	}
+}
+
+// wave-1 C6: повторный set того же устройства на ту же политику — уже
+// привязан: ни bind-верба, ни ndm-save (лишние save носят flash).
+func TestPolicySetDevice_Idempotent_NoRewrite(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	// the fixture is static — make the fake reflect the first bind so the
+	// second set sees the converged table (as the live ndm would)
+	bind := "ip hotspot host aa:bb:cc:dd:ee:ff policy VPN"
+	base := d.ndmcFn
+	d.ndmcFn = func(cmd string) string {
+		if cmd == bind {
+			fake.responses["show ip hotspot"] = strings.Replace(
+				policyFixtureHotspot,
+				"mac: aa:bb:cc:dd:ee:ff\n                      ip: 192.168.2.20\n                  policy:",
+				"mac: aa:bb:cc:dd:ee:ff\n                      ip: 192.168.2.20\n                  policy: VPN", 1)
+		}
+		return base(cmd)
+	}
+	if _, err := d.policySetDevice("smart-tv", "VPN"); err != nil {
+		t.Fatal(err)
+	}
+	nBindFirst := 0
+	nSaveFirst := 0
+	for _, c := range fake.cmds {
+		if strings.HasPrefix(c, "ip hotspot host") {
+			nBindFirst++
+		}
+		if c == "system configuration save" {
+			nSaveFirst++
+		}
+	}
+	if nBindFirst != 1 || nSaveFirst != 1 {
+		t.Fatalf("первый set: bind=%d save=%d, want 1/1 (%v)", nBindFirst, nSaveFirst, fake.cmds)
+	}
+	fake.cmds = nil
+	out, err := d.policySetDevice("smart-tv", "VPN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["already"] != true {
+		t.Fatalf("повторный set: already = %v, want true (out=%v)", out["already"], out)
+	}
+	assertCmds(t, fake, []string{"show ip hotspot", "show ip policy"}, "повторный set не должен писать в ndm")
 }

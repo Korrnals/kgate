@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	urlpkg "net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -154,7 +154,7 @@ func parseSingboxJSON(b []byte) ([]Node, error) {
 // ---- URI parsers ----
 
 func parseVLESS(uri string) (Node, error) {
-	u, err := url.Parse(uri)
+	u, err := urlpkg.Parse(uri)
 	if err != nil {
 		return Node{}, err
 	}
@@ -235,7 +235,7 @@ func parseVLESS(uri string) (Node, error) {
 }
 
 func parseHysteria2(uri string) (Node, error) {
-	u, err := url.Parse(strings.Replace(uri, "hy2://", "hysteria2://", 1))
+	u, err := urlpkg.Parse(strings.Replace(uri, "hy2://", "hysteria2://", 1))
 	if err != nil {
 		return Node{}, err
 	}
@@ -275,7 +275,7 @@ func parseHysteria2(uri string) (Node, error) {
 }
 
 func parseTrojan(uri string) (Node, error) {
-	u, err := url.Parse(uri)
+	u, err := urlpkg.Parse(uri)
 	if err != nil {
 		return Node{}, err
 	}
@@ -310,7 +310,7 @@ func parseTrojan(uri string) (Node, error) {
 }
 
 func parseSS(uri string) (Node, error) {
-	u, err := url.Parse(uri)
+	u, err := urlpkg.Parse(uri)
 	if err != nil {
 		return Node{}, err
 	}
@@ -448,15 +448,45 @@ func atoi(s string, def int) int {
 	return def
 }
 
+// fetchClient builds the subscription HTTP client with a redirect policy
+// (wave-2 F9): only https, same host as the original URL — an https→http
+// downgrade or a bounce to a foreign host would leak the subscription URL
+// (credentials) and fetch configs over plaintext.
+func fetchClient() *http.Client {
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 { // стандартный потолок http.Client
+				return fmt.Errorf("остановлен после %d редиректов", len(via))
+			}
+			if req.URL.Scheme != "https" {
+				return fmt.Errorf("редирект на %s отклонён: только https (downgrade = утечка фида)", req.URL)
+			}
+			if req.URL.Host != via[0].URL.Host {
+				return fmt.Errorf("редирект на чужой host %s отклонён", req.URL.Host)
+			}
+			return nil
+		},
+	}
+}
+
 // Fetch downloads a subscription payload (provider endpoint).
 func Fetch(url string) ([]byte, error) {
+	return fetch(url, fetchClient())
+}
+
+func fetch(url string, client *http.Client) ([]byte, error) {
+	// wave-3 N-9: начальный URL тоже https-only — http:// фид утащил бы
+	// credentials (вшитые в URL) plaintext'ом ещё до политики редиректов.
+	if u, perr := urlpkg.Parse(url); perr != nil || u.Scheme != "https" {
+		return nil, fmt.Errorf("подписка только по https — credentials в URL: %q отклонён", url)
+	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "kgate/1.4")
 	req.Header.Set("Accept", "*/*")
-	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

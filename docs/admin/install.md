@@ -166,6 +166,8 @@ hotplug-хук, `/etc/kgate/{kgate.yaml,sing-box/}` (плейсхолдеры, �
 ```sh
 vi /etc/kgate/kgate.yaml              # host, server_ip
 vi /etc/kgate/sing-box/config.json    # server / password (плейсхолдеры)
+# приватные ключи не должны быть world-readable (пароль внутри config.json):
+chmod 0600 /etc/kgate/sing-box/config.json /etc/kgate/server.key /etc/kgate/client.key 2>/dev/null
 # mTLS-серты: на ноутбуке kgate certs, потом
 # scp ~/.kgate/{ca.crt,server.crt,server.key} root@192.168.1.1:/etc/kgate/
 /etc/init.d/kgate start && /etc/init.d/kgate stack   # демон + sing-box + Proxy0 + пины

@@ -3,8 +3,9 @@ package daemon
 // policy-v2 API: /api/v1/policy/* (docs/dev/policy-v2-design.md).
 // The daemon executes ndm verbs via the ndmc seam; the binding source of
 // truth is `show ip hotspot` (running-config does NOT reflect host binds).
-// Every mutating verb is idempotent: re-binding the same policy and
-// all-vpn/all-direct on a converged system send no ndmc writes at all.
+// Mutating verbs are idempotent: a set to the ALREADY-BOUND policy sends no
+// ndmc writes at all (no bind verb, no flash save); all-vpn/all-direct skip
+// hosts whose binding already matches.
 
 import (
 	"encoding/json"
@@ -30,23 +31,43 @@ func isClientPolicyErr(err error) bool {
 	return ok
 }
 
-// hotspotTable queries and parses the live binding table.
-func (d *Daemon) hotspotTable() policy.Table {
-	return policy.ParseHotspot(d.ndm(policy.ShowHotspotCmd))
+// hotspotTable queries and parses the live binding table. A ndmc failure is
+// NOT silently parsed into an empty table (wave-1 C1: that surfaced as a
+// "healthy" bound=0/total=0 response while ndmc was down) — callers must
+// surface the error as a 500.
+func (d *Daemon) hotspotTable() (policy.Table, error) {
+	out := d.ndm(policy.ShowHotspotCmd)
+	if ndmExecFailed(out) { // wave-2 F5: SHOW-путь — только exec-сбой, не вербальный матч
+		return policy.Table{}, fmt.Errorf("ndmc не ответил на %q: %s", policy.ShowHotspotCmd, strings.TrimSpace(out))
+	}
+	return policy.ParseHotspot(out), nil
 }
 
-// policyNames lists the policy objects ndm currently knows.
-func (d *Daemon) policyNames() []string {
-	return policy.ParsePolicies(d.ndm(policy.ShowPolicies))
+// policyNames lists the policy objects ndm currently knows (error surface:
+// wave-1 C1, same as hotspotTable).
+func (d *Daemon) policyNames() ([]string, error) {
+	out := d.ndm(policy.ShowPolicies)
+	if ndmExecFailed(out) { // wave-2 F5: SHOW-путь — только exec-сбой, не вербальный матч
+		return nil, fmt.Errorf("ndmc не ответил на %q: %s", policy.ShowPolicies, strings.TrimSpace(out))
+	}
+	return policy.ParsePolicies(out), nil
 }
 
-func (d *Daemon) policyExists(name string) bool {
-	for _, n := range d.policyNames() {
+// policyExists reports whether the ndm policy object exists. An ndmc failure
+// is PROPAGATED (wave-2 F7): swallowing it into "false" made set-device/
+// set-segment answer "политика не найдена — сначала kgate deploy" while ndmc
+// was actually down — callers surface it as a 500 instead.
+func (d *Daemon) policyExists(name string) (bool, error) {
+	ns, err := d.policyNames()
+	if err != nil {
+		return false, err
+	}
+	for _, n := range ns {
 		if n == name {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // validTarget checks the API policy enum (VPN|NO-VPN|none).
@@ -126,13 +147,20 @@ func segmentViews(tbl policy.Table) []segmentView {
 // ---- operations ----
 
 // policyList serves the live table: policies + hosts + segments.
-func (d *Daemon) policyList() map[string]any {
-	tbl := d.hotspotTable()
+func (d *Daemon) policyList() (map[string]any, error) {
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		return nil, err
+	}
+	names, err := d.policyNames()
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
-		"policies": d.policyNames(),
+		"policies": names,
 		"hosts":    hostViews(tbl),
 		"segments": segmentViews(tbl),
-	}
+	}, nil
 }
 
 // policySetDevice binds target (MAC|hostname) to VPN|NO-VPN or unbinds
@@ -142,7 +170,10 @@ func (d *Daemon) policySetDevice(target, pol string) (map[string]any, error) {
 	if !validTarget(pol) {
 		return nil, userErrf("policy: %q — разрешены VPN|NO-VPN|none", pol)
 	}
-	tbl := d.hotspotTable()
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		return nil, err
+	}
 	h, err := policy.ResolveHost(tbl, target)
 	if err != nil {
 		return nil, policyUserErr{msg: err.Error()}
@@ -150,8 +181,20 @@ func (d *Daemon) policySetDevice(target, pol string) (map[string]any, error) {
 	bind := pol
 	if pol == policy.PolicyNone {
 		bind = ""
-	} else if !d.policyExists(pol) {
+	} else if exists, err := d.policyExists(pol); err != nil {
+		return nil, err // ndmc down → 500 с ndm-поверхностью (wave-2 F7)
+	} else if !exists {
 		return nil, userErrf("политика %s не найдена в ndm (show ip policy) — сначала kgate deploy: ndm-commands.sh v2 создаёт VPN/NO-VPN", pol)
+	}
+	// idempotence (wave-1 C6): the binding already matches — no bind verb,
+	// no flash save (each ndm-save wears the flash).
+	if h.Policy == bind {
+		return map[string]any{
+			"resolved": map[string]string{
+				"hostname": h.Hostname, "mac": h.MAC, "ip": h.IP, "segment": h.Segment,
+			},
+			"policy": pol, "ndmc": "(уже привязан — ndmc-записей не было)", "save": "", "already": true,
+		}, nil
 	}
 	cmd, err := policy.BindDeviceCmd(h.MAC, bind)
 	if err != nil {
@@ -177,7 +220,10 @@ func (d *Daemon) policySetSegment(target, pol string) (map[string]any, error) {
 	if !validTarget(pol) {
 		return nil, userErrf("policy: %q — разрешены VPN|NO-VPN|none", pol)
 	}
-	tbl := d.hotspotTable()
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		return nil, err
+	}
 	s, err := policy.ResolveSegment(tbl, target)
 	if err != nil {
 		return nil, policyUserErr{msg: err.Error()}
@@ -185,8 +231,17 @@ func (d *Daemon) policySetSegment(target, pol string) (map[string]any, error) {
 	bind := pol
 	if pol == policy.PolicyNone {
 		bind = ""
-	} else if !d.policyExists(pol) {
+	} else if exists, err := d.policyExists(pol); err != nil {
+		return nil, err // ndmc down → 500 с ndm-поверхностью (wave-2 F7)
+	} else if !exists {
 		return nil, userErrf("политика %s не найдена в ndm (show ip policy) — сначала kgate deploy: ndm-commands.sh v2 создаёт VPN/NO-VPN", pol)
+	}
+	// idempotence (wave-1 C6): see policySetDevice
+	if s.Policy == bind {
+		return map[string]any{
+			"resolved": map[string]string{"name": s.Name, "description": s.Description},
+			"policy":   pol, "ndmc": "(уже привязан — ndmc-записей не было)", "save": "", "already": true,
+		}, nil
 	}
 	cmd, err := policy.BindSegmentCmd(s.Name, bind)
 	if err != nil {
@@ -207,10 +262,17 @@ func (d *Daemon) policySetSegment(target, pol string) (map[string]any, error) {
 // Already-bound and offline hosts are skipped without ndmc writes; per-host
 // ndm rejections are collected, not fatal — the summary stays honest.
 func (d *Daemon) policyAllVPN() (map[string]any, error) {
-	if !d.policyExists(policy.PolicyVPN) {
+	exists, err := d.policyExists(policy.PolicyVPN)
+	if err != nil {
+		return nil, err // ndmc down → 500 с ndm-поверхностью (wave-2 F7)
+	}
+	if !exists {
 		return nil, userErrf("политика VPN не найдена в ndm — сначала kgate deploy (ndm-commands.sh v2)")
 	}
-	tbl := d.hotspotTable()
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		return nil, err
+	}
 	bound, skipped := 0, 0
 	var errs []string
 	for _, h := range tbl.Hosts {
@@ -241,7 +303,10 @@ func (d *Daemon) policyAllVPN() (map[string]any, error) {
 // including offline ones, whose stale binds would silently re-apply later.
 // Unbound hosts are skipped without ndmc writes.
 func (d *Daemon) policyAllDirect() (map[string]any, error) {
-	tbl := d.hotspotTable()
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		return nil, err
+	}
 	unbound, skipped := 0, 0
 	var errs []string
 	for _, h := range tbl.Hosts {
@@ -271,9 +336,10 @@ func (d *Daemon) policyAllDirect() (map[string]any, error) {
 // ---- HTTP wiring ----
 
 // registerPolicyHandlers wires /api/v1/policy/* into the mTLS mux.
-// GET: list, segments. POST (JSON body): set-device, set-segment;
-// no body: all-vpn, all-direct. A GET on a mutating endpoint fails body
-// decoding (400) — the mutation never runs blind.
+// GET: list, segments (read-only). POST (JSON body): set-device, set-segment;
+// no body: all-vpn, all-direct. Every mutating endpoint is POST-only
+// (wave-1 C2): a GET — including link-preview/crawler traffic — is refused
+// 405 before any wrap runs, so a mutation can never fire blind.
 func (d *Daemon) registerPolicyHandlers(mux *http.ServeMux, logger func(string)) {
 	writeErr := func(w http.ResponseWriter, err error, code int) {
 		logger("policy: ОШИБКА " + err.Error())
@@ -281,6 +347,11 @@ func (d *Daemon) registerPolicyHandlers(mux *http.ServeMux, logger func(string))
 	}
 	mutate := func(wrap func(r *http.Request) (map[string]any, error)) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", http.MethodPost)
+				writeErr(w, policyUserErr{msg: "метод " + r.Method + " запрещён: endpoint мутирует — используй POST"}, http.StatusMethodNotAllowed)
+				return
+			}
 			out, err := wrap(r)
 			if err != nil {
 				code := http.StatusInternalServerError
@@ -290,7 +361,15 @@ func (d *Daemon) registerPolicyHandlers(mux *http.ServeMux, logger func(string))
 				writeErr(w, err, code)
 				return
 			}
-			logger("policy: " + strings.TrimSpace(fmt.Sprintf("%v %v", r.URL.Path, out["ndmc"])))
+			// honest log line for both verb shapes (wave-1 C5: all-vpn/
+			// all-direct carry bound/unbound, not "ndmc")
+			summary := fmt.Sprintf("%v", out["ndmc"])
+			if b, ok := out["bound"]; ok {
+				summary = fmt.Sprintf("bound=%v skipped=%v total=%v", b, out["skipped"], out["total"])
+			} else if u, ok := out["unbound"]; ok {
+				summary = fmt.Sprintf("unbound=%v skipped=%v total=%v", u, out["skipped"], out["total"])
+			}
+			logger("policy: " + r.URL.Path + " " + summary)
 			json.NewEncoder(w).Encode(out)
 		}
 	}
@@ -308,10 +387,20 @@ func (d *Daemon) registerPolicyHandlers(mux *http.ServeMux, logger func(string))
 	}
 
 	mux.HandleFunc("/api/v1/policy/list", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(d.policyList())
+		out, err := d.policyList()
+		if err != nil {
+			writeErr(w, err, http.StatusInternalServerError) // ndmc down = 500, не пустая таблица (wave-1 C1)
+			return
+		}
+		json.NewEncoder(w).Encode(out)
 	})
 	mux.HandleFunc("/api/v1/policy/segments", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"segments": segmentViews(d.hotspotTable())})
+		tbl, err := d.hotspotTable()
+		if err != nil {
+			writeErr(w, err, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"segments": segmentViews(tbl)})
 	})
 	mux.HandleFunc("/api/v1/policy/set-device", mutate(withBody(d.policySetDevice)))
 	mux.HandleFunc("/api/v1/policy/set-segment", mutate(withBody(d.policySetSegment)))

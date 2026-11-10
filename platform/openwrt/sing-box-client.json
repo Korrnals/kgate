@@ -1,0 +1,22 @@
+{
+  "_header": "Phase 2 scaffolding — НЕ подключено (wave-1 D1): ни install.sh, ни shim, ни init, ни лаба этот конфиг пока не разворачивают; в релизные архивы не входит. Wire-up — field E2E (Flint 2). Лаб-шаблон: tls.insecure=true только для лабы — для прода свой сертификат и insecure:false (предусловие field E2E).",
+  "log": {"level": "info"},
+  "route": {"default_mark": 100},
+  "inbounds": [
+    {
+      "type": "tproxy",
+      "listen": "::",
+      "listen_port": 7893,
+      "sniff": false
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "server": "HYST_SERVER_PLACEHOLDER",
+      "server_port": "HYST_SERVER_PORT_PLACEHOLDER",
+      "password": "HYST_PASSWORD_PLACEHOLDER",
+      "tls": {"enabled": true, "insecure": true}
+    }
+  ]
+}

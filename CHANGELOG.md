@@ -6,6 +6,20 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- `kgate apply` (PushConfig): первый push при отсутствующем на роутере живом
+  `/opt/etc/sing-box/config.json` теперь ГРОМКО аборится ("backup FAILED",
+  шаг падает) — раньше `mv -f` молча создавал файл и маскировал отсутствие
+  предыдущего конфига. Для чистой установки сначала выполняется полный
+  deploy (files — заливает конфиг), а не обновление конфига поверх пустоты.
+- Phase 2 scaffolding honesty: `platform/openwrt/{nft-kgate.conf,
+  sing-box-client.json,traffic-setup.sh}` — заготовки tproxy traffic-path;
+  в install/init/shim они НЕ подключены, в релизные архивы не входят,
+  рабочего traffic-path они не добавляют. Шапки файлов переписаны честно
+  (wire-up планируется на field E2E, Flint 2); `sing-box-client.json` —
+  валидный JSON (порт-плейсхолдер закавычен), `insecure:true` помечен как
+  лаб-вариант.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
