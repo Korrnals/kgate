@@ -62,6 +62,16 @@ func api(c *model.Config, method, path string, body io.Reader) ([]byte, int) {
 	return out, resp.StatusCode
 }
 
+// apiAssertOK fails loud on daemon rejections (wave-1 C3): the client used
+// to print the error body and exit 0, so scripts saw success on HTTP >=400.
+func apiAssertOK(code int, b []byte) []byte {
+	if code >= 400 {
+		fmt.Printf("FAIL: daemon вернул HTTP %d:\n%s\n", code, strings.TrimSpace(string(b)))
+		os.Exit(1)
+	}
+	return b
+}
+
 func pretty(b []byte) string {
 	var m map[string]any
 	if json.Unmarshal(b, &m) == nil {
@@ -187,7 +197,8 @@ type policyListReply struct {
 
 func policyFetchList(c *model.Config) (policyListReply, bool) {
 	var rep policyListReply
-	b, _ := api(c, "GET", "/api/v1/policy/list", nil)
+	b, code := api(c, "GET", "/api/v1/policy/list", nil)
+	b = apiAssertOK(code, b)
 	if json.Unmarshal(b, &rep) != nil {
 		fmt.Println(string(b)) // не-JSON (ошибка mTLS/демона) — покажи как есть
 		return rep, false
@@ -263,20 +274,23 @@ func yesno(b bool) string {
 func PolicySet(c *model.Config, kind, target, pol string) {
 	path := "/api/v1/policy/set-" + kind
 	body, _ := json.Marshal(map[string]string{"target": target, "policy": pol})
-	b, _ := api(c, "POST", path, bytes.NewReader(body))
+	b, code := api(c, "POST", path, bytes.NewReader(body))
+	b = apiAssertOK(code, b)
 	fmt.Printf("=== policy set %s %s → %s ===\n", kind, target, pol)
 	fmt.Println(pretty(b))
 }
 
 // PolicyAllVPN / PolicyAllDirect: массовые режимы (все активные в VPN / снять все привязки).
 func PolicyAllVPN(c *model.Config) {
-	b, _ := api(c, "POST", "/api/v1/policy/all-vpn", nil)
+	b, code := api(c, "POST", "/api/v1/policy/all-vpn", nil)
+	b = apiAssertOK(code, b)
 	fmt.Println("=== policy all-vpn ===")
 	fmt.Println(pretty(b))
 }
 
 func PolicyAllDirect(c *model.Config) {
-	b, _ := api(c, "POST", "/api/v1/policy/all-direct", nil)
+	b, code := api(c, "POST", "/api/v1/policy/all-direct", nil)
+	b = apiAssertOK(code, b)
 	fmt.Println("=== policy all-direct ===")
 	fmt.Println(pretty(b))
 }

@@ -17,9 +17,11 @@
 #      No opkg dependency: prerequisites are checked and reported, never
 #      installed (Entware is NOT required).
 #      KGATE_RELEASE_BASE переопределяет источник релиза (зеркало/оффлайн):
-#        http(s)://… — заменяет префикс https://github.com/<REPO>/releases/download
+#        https://…  — заменяет префикс https://github.com/<REPO>/releases/download
 #        /path/to/dir — файловый оффлайн-режим: архив и checksums копируются из
 #                      каталога (podman-лаба lab/run.sh, аэрогап-инсталляции).
+#        http:// отклоняется fail-loud (архивы по открытому HTTP — supply-chain
+#        риск; wave-1 B6).
 #
 # For rate-limited environments export GITHUB_TOKEN (optional; the repository
 # is public — anonymous downloads work). KGATE_VERSION pins a release tag.
@@ -28,6 +30,11 @@ set -eu
 REPO="Korrnals/kgate"
 DEST="${KGATE_DEST:-$HOME/.local/bin}"
 SINGBOX_VER=1.11.15   # pinned in the Makefile too; keep in sync
+# pinned sha256 of the sing-box tarballs (supply-chain, wave-1 B6; source:
+# https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/… —
+# recompute with sha256sum when bumping SINGBOX_VER):
+SINGBOX_SHA256_arm64="20a6a9cd259a95411599f811a5066513a98db63705a51121252ad27daf96c029"
+SINGBOX_SHA256_amd64="950af37eb2d7e55dddae34a18411cd617303fd99d2dc75bc76b6dd9fcd97d9c5"
 
 PLATFORM=""
 for a in "$@"; do
@@ -86,7 +93,9 @@ install_openwrt() {
   [ -e /usr/sbin/iptables-nft ] || [ -e /sbin/iptables-nft ] || warn_missing="$warn_missing iptables-nft"
   [ -e /usr/sbin/ip6tables-nft ] || [ -e /sbin/ip6tables-nft ] || warn_missing="$warn_missing ip6tables-nft"
   [ -d /etc/ssl/certs ] || warn_missing="$warn_missing ca-bundle"
-  busybox ip route 2>/dev/null | grep -q "via" || true   # busybox ip suffices for the shim; ip-full is only a robustness upgrade
+  # real check (was a no-op `… || true`, wave-1 B5): busybox ip route is used
+  # by the shim/hotplug for pin reapply — if even busybox ip fails, say so
+  busybox ip route >/dev/null 2>&1 || warn_missing="$warn_missing busybox-ip(route)"
   if [ -n "$warn_missing" ]; then
     echo "kgate-install: WARNING: рекомендованные пакеты не найдены:$warn_missing"
     echo "kgate-install:   LAN-DNS bypass демона (SBREDIRECT через /opt/sbin/iptables) требует iptables-nft/ip6tables-nft;"
@@ -112,20 +121,20 @@ install_openwrt() {
     # offline release dir (lab/mirror): cp instead of fetch — no network at all
     echo "kgate-install: локальный релиз: $KGATE_RELEASE_BASE/$ARCHIVE"
     cp -f "$KGATE_RELEASE_BASE/$ARCHIVE" "$TMP/$ARCHIVE" || die "архива нет в KGATE_RELEASE_BASE: $ARCHIVE"
-    cp -f "$KGATE_RELEASE_BASE/checksums-sha256.txt" "$TMP/checksums" 2>/dev/null || true
+    cp -f "$KGATE_RELEASE_BASE/checksums-sha256.txt" "$TMP/checksums" || die "checksums-sha256.txt нет в KGATE_RELEASE_BASE — ставить без проверки целостности отказываюсь (fail-loud, wave-1 B6)"
   else
+    case "${KGATE_RELEASE_BASE:-}" in
+      http://*) die "KGATE_RELEASE_BASE с http:// отклонён — только https:// или локальный каталог (wave-1 B6)" ;;
+    esac
     BASE="${KGATE_RELEASE_BASE:-https://github.com/${REPO}/releases/download}"
     BASE="$BASE/$TAG"
     echo "kgate-install: downloading $BASE/$ARCHIVE"
     fetch_to "$BASE/$ARCHIVE" "$TMP/$ARCHIVE" || die "скачивание не удалось (https через busybox wget без libustream падает — opkg install curl)"
-    fetch_to "$BASE/checksums-sha256.txt" "$TMP/checksums" || true
+    fetch_to "$BASE/checksums-sha256.txt" "$TMP/checksums" || die "checksums-sha256.txt недоступен — ставить без проверки целостности отказываюсь (fail-loud, wave-1 B6)"
   fi
-  if [ -s "$TMP/checksums" ]; then
-    (cd "$TMP" && grep " $ARCHIVE\$" checksums | sha256sum -c -) \
-      || die "checksum не сошёлся для $ARCHIVE — не ставлю"
-  else
-    echo "kgate-install: WARNING: checksums-sha256.txt недоступен — проверка целостности пропущена"
-  fi
+  [ -s "$TMP/checksums" ] || die "checksums-sha256.txt пуст — ставить без проверки целостности отказываюсь (wave-1 B6)"
+  (cd "$TMP" && grep " $ARCHIVE\$" checksums | sha256sum -c -) \
+    || die "checksum не сошёлся для $ARCHIVE — не ставлю"
 
   mkdir -p "$TMP/px"
   tar -xzf "$TMP/$ARCHIVE" -C "$TMP/px"
@@ -144,6 +153,9 @@ install_openwrt() {
     echo "kgate-install: downloading SagerNet sing-box v${SINGBOX_VER} (${GOARCH})"
     fetch_to "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/${SB}" "$TMP/$SB" \
       || die "sing-box скачать не удалось — поставь /usr/bin/sing-box руками (см. Makefile: SINGBOX_VER=${SINGBOX_VER}) и повтори"
+    eval "want=\$SINGBOX_SHA256_${GOARCH}"
+    [ -n "$want" ] || die "нет pinned sha256 для ${GOARCH} — обнови константы SINGBOX_SHA256_* в скрипте"
+    echo "${want}  $TMP/$SB" | sha256sum -c - || die "sha256 sing-box не сошёлся с pinned-константой — не ставлю"
     tar -xzf "$TMP/$SB" -C "$TMP/px"
     mv -f "$TMP/px/sing-box-${SINGBOX_VER}-linux-${GOARCH}/sing-box" /usr/bin/sing-box
     chmod 0755 /usr/bin/sing-box
@@ -164,12 +176,16 @@ install_openwrt() {
   /etc/init.d/kgate enable
 
   # state dir + sing-box skeleton (never overwrite a live config — deploy lesson)
+  # umask 077: приватные файлы под root не должны быть world-readable (wave-1 B7;
+  # явный chmod 0600 на config.json ниже — belt and suspenders)
+  umask 077
   mkdir -p /etc/kgate/sing-box/rulesets
   if [ -s /etc/kgate/sing-box/config.json ]; then
     echo "kgate-install: /etc/kgate/sing-box/config.json сохранён (существующий/подписочный)"
   else
     cp -f "$TMP/px/examples/etc/sing-box/config.json" /etc/kgate/sing-box/config.json
   fi
+  chmod 0600 /etc/kgate/sing-box/config.json   # пароль внутри (wave-1 B7)
   cp -f "$TMP/px/examples/etc/sing-box/rulesets/"*.srs /etc/kgate/sing-box/rulesets/ 2>/dev/null || true
 
   if [ ! -s /etc/kgate/kgate.yaml ]; then

@@ -1,6 +1,11 @@
 #!/bin/sh
 # openwrt-traffic-setup.sh — настройка route/rule для tproxy на OpenWrt.
-# Гоняется deploy'ом kgate ПОСЛЕ nft-kgate.conf (часть traffic-path Phase 2).
+#
+# ВНИМАНИЕ (honest marking, wave-1 D1): Phase 2 scaffolding — НЕ подключено.
+# Ни install.sh, ни deploy, ни shim, ни init этот скрипт пока НЕ запускают;
+# в релизные архивы он не входит. Wire-up планируется на field E2E (Flint 2).
+# Применяется пока только вручную/в лабе (sh traffic-setup.sh ПОСЛЕ ручного
+# nft -f nft-kgate.conf).
 #
 # Требования: ip-full (ip rule), nftables, sing-box (tproxy :7893).
 # Идемпотентно: повторный прогон — те же правила.

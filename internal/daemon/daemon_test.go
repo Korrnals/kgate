@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"net"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
@@ -500,5 +501,66 @@ func TestFlapSelfHeal_Up_Noop(t *testing.T) {
 		if c != "show interface Proxy0" { // health-check разрешён, тоггл — нет
 			t.Fatalf("лишняя команда при поднятом туннеле: %v", fake.cmds[before:])
 		}
+	}
+}
+
+// wave-1 A3: the /api/v1/toggle handler is the PROD intent writer — the test
+// exercises it via httptest instead of hand-writing the intent file.
+func TestToggleHandler_Off_IntentVocabulary_AndOrder(t *testing.T) {
+	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "intent")
+	intentAtToggle := ""
+	base := d.ndmcFn
+	d.ndmcFn = func(cmd string) string {
+		if cmd == "interface Proxy0 down" {
+			b, _ := os.ReadFile(d.intentPath) // order check: intent must be ALREADY written
+			intentAtToggle = string(b)
+		}
+		return base(cmd)
+	}
+	req := httptest.NewRequest("POST", "/api/v1/toggle", strings.NewReader(`{"state":"off"}`))
+	rec := httptest.NewRecorder()
+	d.toggleHandler()(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("code = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if intentAtToggle != "down\n" {
+		t.Fatalf("intent при вызове toggle = %q, want %q — intent должен писаться ДО d.toggle (гонка с flapSelfHeal)", intentAtToggle, "down\n")
+	}
+	b, _ := os.ReadFile(d.intentPath)
+	if string(b) != "down\n" {
+		t.Fatalf("intent-файл = %q, want %q (verb, не state)", string(b), "down\n")
+	}
+	if d.intentDown() != true {
+		t.Fatal("intentDown() = false после toggle off")
+	}
+	// flapSelfHeal обязан уважать этот intent (Proxy0 down → ре-райза нет)
+	fake.responses = map[string]string{
+		"show interface Proxy0": "        state: down\n     connected: no",
+	}
+	fake.cmds = nil
+	d.flapSelfHeal(func(string) {})
+	for _, c := range fake.cmds {
+		if c == "interface Proxy0 up" {
+			t.Fatalf("flapSelfHeal поднял туннель вопреки intent, записанному прод-хендлером: %v", fake.cmds)
+		}
+	}
+}
+
+// wave-1 C4: ndmc rejected the toggle → 500 with the ndmc surface (intent
+// stays persisted so the off-switch still holds).
+func TestToggleHandler_NdmcFailed_500(t *testing.T) {
+	d, _ := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
+	d.intentPath = filepath.Join(t.TempDir(), "intent")
+	d.ndmcFn = func(string) string { return "[C] ndm: Cli::Main: system failed [0xcffd00d9]" }
+	req := httptest.NewRequest("POST", "/api/v1/toggle", strings.NewReader(`{"state":"off"}`))
+	rec := httptest.NewRecorder()
+	d.toggleHandler()(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("code = %d, want 500 (ndmc-поверхность ошибки)", rec.Code)
+	}
+	b, _ := os.ReadFile(d.intentPath)
+	if string(b) != "down\n" {
+		t.Fatalf("intent должен пережить ndmc-отказ: %q", string(b))
 	}
 }

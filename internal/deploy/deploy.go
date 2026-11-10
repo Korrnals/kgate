@@ -4,6 +4,7 @@
 package deploy
 
 import (
+	"net"
 	"path/filepath"
 
 	_ "embed"
@@ -127,10 +128,21 @@ func DestroyPlan(c *model.Config) string {
     init-скрипт, ndm-commands.sh, логи
   - ndm: снять route-pin'ы (%s, 77.88.8.8) и name-server 77.88.8.8
   - ndm: ПОЛНОСТЬЮ удалить интерфейс Proxy0 и политики-сценарии
-    (VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
+    (v2: VPN, NO-VPN; legacy v1: VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
   - проверить, что следов kgate в running-config не осталось
 Останется: sshd и Entware; клиентские файлы на ноутбуке
 (~/.kgate, ~/.local/bin/kgate).`, c.Host, pins)
+}
+
+// serverIPOrFatal validates ServerIP before it is interpolated into root-shell
+// scripts (ndmc and destroy verbs, wave-1 B3): a non-IP string (hostname,
+// shell metachars) would be interpreted by the remote sh as root. Fatal —
+// конфигурация-ошибка, до ssh.
+func (r *Runner) serverIPOrFatal() string {
+	if r.c.ServerIP != "" && net.ParseIP(r.c.ServerIP) == nil { // пустой = легаси-деградация (как раньше), битый = отказ до ssh
+		r.fatal(fmt.Sprintf("конфиг: server_ip %q — не валидный IP (net.ParseIP); деплой/destroy отменён до ssh", r.c.ServerIP))
+	}
+	return r.c.ServerIP
 }
 
 // ---- deploy stages ----
@@ -160,7 +172,8 @@ func (r *Runner) Files() {
 			r.upload(b, `mkdir -p /opt/etc/sing-box && cat > /opt/etc/sing-box/config.json`, "конфиг из подписки (замена шаблона)")
 		}
 	}
-	r.step("распаковка и раскладка (бинари, S99, ndm, конфиг, rulesets)", `mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
+	r.step("распаковка и раскладка (бинари, S99, ndm, конфиг, rulesets)", `set -e
+mkdir -p /tmp/px && cd /tmp/px && rm -rf * && tar -xzf /tmp/payload.tgz
 mv -f kgate-arm64 /opt/sbin/kgate
 mv -f sing-box /opt/sbin/sing-box
 mv -f ndm-commands.sh /opt/etc/ndm-commands.sh
@@ -180,7 +193,10 @@ rm -f /opt/etc/ssh/authorized_keys.new
 chmod +x /opt/sbin/kgate /opt/sbin/sing-box /opt/etc/init.d/S99kgate
 rm -rf /tmp/px /tmp/payload.tgz
 mkdir -p /opt/etc/kgate /opt/etc/ssh /opt/var/log /opt/var/run
-/opt/sbin/kgate version | head -1`)
+# version-evidence БЕЗ съеденного exit-кода (wave-1 B1): head в пайпе маскировал
+# бы падение самого бинаря
+v=$(/opt/sbin/kgate version) || { echo "kgate version FAILED"; exit 1; }
+echo "$v" | head -1`)
 	r.step("opkg-зависимости (iptables, openssh-server)", `opkg update >/dev/null 2>&1; for p in iptables openssh-server; do opkg list-installed | grep -q "^$p " || opkg install $p; done; opkg list-installed | grep -E "^(iptables|openssh-server) " | head -2`)
 }
 
@@ -191,7 +207,7 @@ func (r *Runner) Migrate() {
 rm -f /opt/var/run/routerctl*.pid /opt/var/run/routerctl.pid
 [ -f /opt/etc/init.d/S99sing-box ] && mv /opt/etc/init.d/S99sing-box /opt/etc/init.d/S99sing-box.disabled
 grep -vE "(rc-redirect|boot-autoup|\{kgate\})" /opt/etc/init.d/rc.unslung > /tmp/rcu && cat /tmp/rcu > /opt/etc/init.d/rc.unslung && rm /tmp/rcu
-for P in $(ps w | grep rc-redirect-watchdog | grep -v grep | awk "{print \$1}"); do kill $P 2>/dev/null; done
+for P in $(ps w | grep "[r]c-redirect-watchdog" | awk "{print \$1}"); do kill $P 2>/dev/null; done   # bracket-trick: не матчим собственный sh (wave-1 C7)
 [ -f /opt/etc/init.d/S24xray ] && mv /opt/etc/init.d/S24xray /opt/etc/init.d/S24xray.disabled
 killall xray 2>/dev/null
 echo "legacy disabled"`)
@@ -229,8 +245,9 @@ func (r *Runner) ConfigAndCerts(cfg *model.Config) {
 }
 
 func (r *Runner) NDM() {
+	serverIP := r.serverIPOrFatal()
 	fmt.Println("→ deploy: ndm (Proxy0, пины, DNS, политики policy-v2)")
-	r.step("ndm-commands.sh идемпотентным прогоном", `{ test -f /opt/etc/ndm-commands.sh || { echo "ndm-commands.sh missing — run kgate files first"; exit 1; }; KGATE_SERVER_IP="`+r.c.ServerIP+`" sh /opt/etc/ndm-commands.sh 2>&1; }`)
+	r.step("ndm-commands.sh идемпотентным прогоном", `{ test -f /opt/etc/ndm-commands.sh || { echo "ndm-commands.sh missing — run kgate files first"; exit 1; }; KGATE_SERVER_IP="`+serverIP+`" sh /opt/etc/ndm-commands.sh 2>&1; }`)
 	// belt and suspenders (policy-v2, поле-наблюдение 09.11): веб «Приоритеты
 	// доступов» при каждом save возвращает застоявшийся статический
 	// `ip route 0.0.0.0/0 Proxy0` — а дефолтная политика с ним смотрит не
@@ -244,7 +261,13 @@ func (r *Runner) NDM() {
 	// kgate-session-reports/tumbler-verdict.md). Save также фиксирует intent
 	// "up" во flash — после ребута ОС уважает его.
 	r.step("system configuration save (веб-модель тумблера + intent up)", `ndmc -c "system configuration save" && echo saved
-mkdir -p /opt/etc/kgate && echo up > /opt/etc/kgate/intent`)
+mkdir -p /opt/etc/kgate
+# ГРОМКОЕ предупреждение при перевороте явно выключенного владельцем туннеля (wave-1 B4):
+if [ -f /opt/etc/kgate/intent ] && [ "$(cat /opt/etc/kgate/intent 2>/dev/null)" = "down" ]; then
+  echo "WARNING: существовал intent=down (туннель явно выключен владельцем) — deploy ПЕРЕВОРАЧИВАЕТ его в up"
+  echo "WARNING: если это не ожидаемо — после deploy выполни: kgate toggle off"
+fi
+echo up > /opt/etc/kgate/intent`)
 }
 
 func (r *Runner) Services() {
@@ -315,7 +338,8 @@ func (r *Runner) PushConfig(merged []byte) error {
 	}
 	// 3. backup + atomic swap (mv в одной файловой системе); echo — только
 	// после успешного mv, иначе маскирует его провал
-	if err := r.stepErr("swap: backup → атомарная замена", `cp -f /opt/etc/sing-box/config.json /opt/etc/sing-box/config.json.bak 2>/dev/null; mv -f /opt/etc/sing-box/config.json.new /opt/etc/sing-box/config.json && echo swapped`); err != nil {
+	if err := r.stepErr("swap: backup → атомарная замена", `cp -f /opt/etc/sing-box/config.json /opt/etc/sing-box/config.json.bak || { echo "backup FAILED"; exit 1; }
+mv -f /opt/etc/sing-box/config.json.new /opt/etc/sing-box/config.json && echo swapped`); err != nil {
 		return err
 	}
 	// 4. restart
@@ -327,6 +351,21 @@ func (r *Runner) PushConfig(merged []byte) error {
 // (Proxy0 interface AND scenario policies — no rudiments left behind) and
 // verify the running-config is clean.
 func (r *Runner) Destroy() {
+	// honest refusal on OpenWrt (wave-1 D3): destroy описан под Keenetic/Entware —
+	// rm -rf /opt/etc/kgate на OpenWrt снимает симлинк, содержимое /etc/kgate
+	// (intent) выживает, cleanliness-gate падает ложью; init/hotplug/shim остаются.
+	out := r.step("детект платформы (OpenWrt → честный отказ)", `[ -f /etc/openwrt_release ] && echo openwrt || echo non-openwrt`)
+	if strings.Contains(out, "openwrt") {
+		r.fatal("destroy на OpenWrt НЕ поддержан (полный destroy — задача field E2E). Удали вручную:\n" +
+			"      /etc/init.d/kgate disable && rm -f /etc/init.d/kgate\n" +
+			"      rm -f /etc/hotplug.d/iface/50-kgate-pins /usr/bin/ndmc /bin/ndmc /usr/bin/kgate\n" +
+			"      rm -rf /etc/kgate /opt/sbin /opt/etc/kgate /opt/etc/sing-box   # /opt/* — симлинки\n" +
+			"      # ndm-объекты, если создавались: uci-шоу/удаление — см. docs/admin/uninstall.md")
+	}
+	serverIP := ""
+	if r.c.ServerIP != "" {
+		serverIP = r.serverIPOrFatal()
+	}
 	fmt.Println("→ destroy: остановка и пакет")
 	r.step("S99kgate stop (Proxy0 down) + opkg remove kgate", `/opt/etc/init.d/S99kgate stop 2>/dev/null
 if opkg list-installed | grep -q "^kgate "; then opkg remove kgate; fi
@@ -357,9 +396,9 @@ echo "stack files removed"`)
 
 	fmt.Println("→ destroy: ndm (пины, DNS)")
 	pins := ""
-	if r.c.ServerIP != "" {
+	if serverIP != "" {
 		pins += `
-ndmc -c "no ip route ` + r.c.ServerIP + ` ISP"`
+ndmc -c "no ip route ` + serverIP + ` ISP"`
 	}
 	pins += `
 ndmc -c "no ip route 77.88.8.8 ISP"

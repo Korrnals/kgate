@@ -25,11 +25,9 @@ import (
 )
 
 type Daemon struct {
-	cfg      *model.Config
-	mgr      *procManager
-	lastIPOK bool
-	upOnce   bool
-	cfgWarn  bool // template placeholders detected: do not auto-raise a dead tunnel
+	cfg     *model.Config
+	mgr     *procManager
+	cfgWarn bool // template placeholders detected: do not auto-raise a dead tunnel
 	// route-pin: источник истины — фактический `show ip route`; pins содержит
 	// только пины, которые мы сами подтвердили (ip → хост-владелец из конфига;
 	// "" = seed ServerIP от deploy до первой сверки)
@@ -113,6 +111,13 @@ func daemonEnv() []string {
 }
 
 func (d *Daemon) ndmc(cmd string) string {
+	// defense-in-depth (wave-1 D6): cmd is interpolated into sh -c "…" with
+	// only double quotes escaped; $ or ` inside cmd would expand in the
+	// router shell. Audited (grep): no legitimate call site passes either,
+	// so the filter refuses instead of attempting partial escaping.
+	if strings.ContainsAny(cmd, "$`") {
+		return fmt.Sprintf("ERR(ndmc: cmd rejected, '$'/backtick not allowed: %q)", cmd)
+	}
 	return sh(`/bin/ndmc -c "` + strings.ReplaceAll(cmd, `"`, `\"`) + `"`)
 }
 
@@ -191,7 +196,7 @@ func (m *procManager) start(p *proc) error {
 
 func (m *procManager) killAll() {
 	// via ps (busybox killall is unreliable for these names)
-	out := sh(`ps w | grep -E "sing-box|xray" | grep -v grep | awk "{print \$1}"`)
+	out := sh(`ps w | awk "/[s]ing-box|[x]ray/ && \$NF !~ /awk|sh -c/ {print \$1}"`)
 	for _, s := range strings.Fields(out) {
 		if pid, err := strconv.Atoi(s); err == nil && pid != os.Getpid() {
 			syscall.Kill(pid, syscall.SIGKILL)
@@ -444,16 +449,6 @@ func (d *Daemon) toggle(state string) string {
 	return d.ndm("interface Proxy0 " + state)
 }
 
-// scIntentUp reads the PERSISTED switch intent from the config view
-// (show sc interface Proxy0 → "up: yes"). The web toggle writes it directly;
-// CLI up/down does NOT change it (troubleshoot 06.11: the node survives CLI
-// cycles — only an explicit save syncs it). It is therefore the authoritative
-// "owner wanted the tunnel" signal, distinct from the runtime state.
-func (d *Daemon) scIntentUp() bool {
-	out := d.ndm("show sc interface Proxy0")
-	return strings.Contains(out, "up: yes")
-}
-
 // intentPath holds the OPERATOR intent for the tunnel switch ("up"/"down").
 // The sc view cannot serve this role: it mirrors the live state (an interface
 // down → the up-node vanishes), so "owner turned it off" and "flap" are
@@ -618,7 +613,7 @@ func (d *Daemon) Run() error {
 	// once at startup: clear foreign processes and take ownership of the stack
 	d.mgr.killAll()
 	d.warnPlaceholders(logger)
-	logger("supervisor: принял стек (sing-box + xray)")
+	logger("supervisor: принял стек (sing-box)")
 	d.mgr.ensure()
 	d.iptablesApply()
 	if err := d.relayListen(d.cfg.Daemon.RelayListen, d.cfg.Daemon.RelayUpstream); err != nil {
@@ -638,10 +633,13 @@ func (d *Daemon) Run() error {
 			logger("autoup: пропущен — конфиг не настроен (шаблон с плейсхолдерами), Proxy0 не трогаю")
 			return
 		}
+		if d.intentDown() {
+			logger("autoup: пропущен — intent=down (туннель явно выключен владельцем)")
+			return
+		}
 		if d.waitPort("127.0.0.1:1080", 60*time.Second) {
 			d.toggle("up")
 			logger("autoup: Proxy0 up (tunnel engine готов)")
-			d.upOnce = true
 		} else {
 			logger("autoup: sing-box не поднялся за 60с — Proxy0 не трогаю")
 		}
@@ -669,6 +667,43 @@ func (d *Daemon) Run() error {
 	return err
 }
 
+// toggleHandler is the /api/v1/toggle endpoint (extracted for tests, wave-1 A3).
+func (d *Daemon) toggleHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			State string `json:"state"`
+		}
+		json.NewDecoder(r.Body).Decode(&in)
+		if in.State != "on" && in.State != "off" {
+			http.Error(w, "state: on|off", 400)
+			return
+		}
+		verb := map[string]string{"on": "up", "off": "down"}[in.State]
+		// operator intent file: the ONLY off-switch the self-heal respects
+		// (kgate-1.4.6). /opt/etc/kgate survives reboots without ndm save.
+		// Written BEFORE d.toggle: flapSelfHeal (15s tick) reads this file —
+		// writing after the toggle raced the tick (a "down" click could be
+		// re-raised before the intent landed). Readers expect the literal
+		// verb ("up"/"down"), not the API state word (kgate.init, ndmc-shim,
+		// intentDown all compare against "down").
+		if err := os.WriteFile(d.intentFile(), []byte(verb+"\n"), 0644); err != nil {
+			fmt.Printf("kgate: intent write FAILED (%s): %v\n", d.intentFile(), err)
+		}
+		out := d.toggle(verb)
+		if ndmcFailed(out) {
+			// intent is already persisted (the off-switch holds); the response
+			// must surface the ndmc rejection, not fake success (wave-1 C4)
+			http.Error(w, "ndmc отклонил toggle: "+strings.TrimSpace(out), http.StatusInternalServerError)
+			return
+		}
+		// keep the sc view/dashboard switch truthful for on-toggles
+		time.Sleep(1 * time.Second)
+		_ = d.ndm("system configuration save")
+		time.Sleep(5 * time.Second)
+		json.NewEncoder(w).Encode(map[string]string{"ndmc": out, "proxy0": d.proxyState()})
+	}
+}
+
 // ---- mTLS API ----
 
 func (d *Daemon) serveAPI(logger func(string)) error {
@@ -693,26 +728,7 @@ func (d *Daemon) serveAPI(logger func(string)) error {
 	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(d.status())
 	})
-	mux.HandleFunc("/api/v1/toggle", func(w http.ResponseWriter, r *http.Request) {
-		var in struct {
-			State string `json:"state"`
-		}
-		json.NewDecoder(r.Body).Decode(&in)
-		if in.State != "on" && in.State != "off" {
-			http.Error(w, "state: on|off", 400)
-			return
-		}
-		verb := map[string]string{"on": "up", "off": "down"}[in.State]
-		out := d.toggle(verb)
-		// operator intent file: the ONLY off-switch the self-heal respects
-		// (kgate-1.4.6). /opt/etc/kgate survives reboots without ndm save.
-		_ = os.WriteFile(d.intentFile(), []byte(strings.ToLower(in.State)+"\n"), 0644)
-		// keep the sc view/dashboard switch truthful for on-toggles
-		time.Sleep(1 * time.Second)
-		_ = d.ndm("system configuration save")
-		time.Sleep(5 * time.Second)
-		json.NewEncoder(w).Encode(map[string]string{"ndmc": out, "proxy0": d.proxyState()})
-	})
+	mux.Handle("/api/v1/toggle", d.toggleHandler())
 	mux.HandleFunc("/api/v1/ruexit", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Mode string `json:"mode"`
