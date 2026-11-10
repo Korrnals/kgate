@@ -372,11 +372,26 @@ func platformIsOpenWrt(out string) bool {
 	return strings.TrimSpace(out) == "openwrt"
 }
 
+// platformDetectKnown — замкнутое множество допустимых эхо детекта платформы.
+// Пустой вывод или мусор = транзиентный сбой транспорта ssh; destroy на
+// неизвестной платформе обязан отказать (fail-closed), а не продолжать
+// (cascade wave-3, N-7).
+func platformDetectKnown(out string) bool {
+	switch strings.TrimSpace(out) {
+	case "openwrt", "non-openwrt":
+		return true
+	}
+	return false
+}
+
 func (r *Runner) Destroy() {
 	// honest refusal on OpenWrt (wave-1 D3): destroy описан под Keenetic/Entware —
 	// rm -rf /opt/etc/kgate на OpenWrt снимает симлинк, содержимое /etc/kgate
 	// (intent) выживает, cleanliness-gate падает ложью; init/hotplug/shim остаются.
 	out := r.step("детект платформы (OpenWrt → честный отказ)", `[ -f /etc/openwrt_release ] && echo openwrt || echo non-openwrt`)
+	if !platformDetectKnown(out) {
+		r.fatal(fmt.Sprintf("не удалось определить платформу роутера: %q — destroy отменён (пустой/непарсируемый вывод = сбой транспорта; продолжение вслепую опасно)", strings.TrimSpace(out)))
+	}
 	if platformIsOpenWrt(out) {
 		r.fatal("destroy на OpenWrt НЕ поддержан (полный destroy — задача field E2E). Удали вручную:\n" +
 			"      /etc/init.d/kgate disable && rm -f /etc/init.d/kgate\n" +

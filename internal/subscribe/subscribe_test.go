@@ -312,3 +312,30 @@ func TestFetch_RedirectPolicy(t *testing.T) {
 		t.Fatal("клиент с прод-политикой должен отклонять redirect на http")
 	}
 }
+
+// wave-3 N-9: начальный URL фида — только https; http:// отклонён ДО любого
+// сетевого запроса (credentials вшиты в URL подписки).
+func TestFetch_HTTPSOnlyInitialURL(t *testing.T) {
+	hit := false
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Write([]byte("x"))
+	}))
+	defer srv.Close()
+
+	client := fetchClient()
+	client.Transport = srv.Client().Transport
+
+	httpURL := "http://" + strings.TrimPrefix(srv.URL, "https://") + "/feed"
+	if _, err := fetch(httpURL, client); err == nil {
+		t.Fatal("http:// фид должен быть отклонён")
+	} else if !strings.Contains(err.Error(), "только по https") {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+	if hit {
+		t.Fatal("сетевой запрос при http:// фиде не должен выполняться")
+	}
+	if _, err := fetch(srv.URL, client); err != nil {
+		t.Fatalf("https:// фид должен пройти: %v", err)
+	}
+}

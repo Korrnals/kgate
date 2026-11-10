@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	urlpkg "net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -154,7 +154,7 @@ func parseSingboxJSON(b []byte) ([]Node, error) {
 // ---- URI parsers ----
 
 func parseVLESS(uri string) (Node, error) {
-	u, err := url.Parse(uri)
+	u, err := urlpkg.Parse(uri)
 	if err != nil {
 		return Node{}, err
 	}
@@ -235,7 +235,7 @@ func parseVLESS(uri string) (Node, error) {
 }
 
 func parseHysteria2(uri string) (Node, error) {
-	u, err := url.Parse(strings.Replace(uri, "hy2://", "hysteria2://", 1))
+	u, err := urlpkg.Parse(strings.Replace(uri, "hy2://", "hysteria2://", 1))
 	if err != nil {
 		return Node{}, err
 	}
@@ -275,7 +275,7 @@ func parseHysteria2(uri string) (Node, error) {
 }
 
 func parseTrojan(uri string) (Node, error) {
-	u, err := url.Parse(uri)
+	u, err := urlpkg.Parse(uri)
 	if err != nil {
 		return Node{}, err
 	}
@@ -310,7 +310,7 @@ func parseTrojan(uri string) (Node, error) {
 }
 
 func parseSS(uri string) (Node, error) {
-	u, err := url.Parse(uri)
+	u, err := urlpkg.Parse(uri)
 	if err != nil {
 		return Node{}, err
 	}
@@ -476,6 +476,11 @@ func Fetch(url string) ([]byte, error) {
 }
 
 func fetch(url string, client *http.Client) ([]byte, error) {
+	// wave-3 N-9: начальный URL тоже https-only — http:// фид утащил бы
+	// credentials (вшитые в URL) plaintext'ом ещё до политики редиректов.
+	if u, perr := urlpkg.Parse(url); perr != nil || u.Scheme != "https" {
+		return nil, fmt.Errorf("подписка только по https — credentials в URL: %q отклонён", url)
+	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
