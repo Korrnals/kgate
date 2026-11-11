@@ -79,6 +79,21 @@ Hotfix from the live-router field E2E of v1.6.0.
 - Build: toolchain pin bumped to go1.27.4 — the release security gate
   caught GO-2026-6859 (net/http MaxBytesReader header race) in go1.27.3.
 
+## [1.6.2] - 2026-11-11
+
+Second live-router hotfix of the v1.6.x field E2E.
+
+### Fixed
+- **Policy bindings were invisible on real firmware.** KeeneticOS renders
+  `policy:` empty in the global `show ip hotspot`, so `kgate policy list`
+  showed every bound device as "default: direct" and repeat binds rewrote
+  the flash each time (the idempotence check saw no binding). Bindings are
+  now read from `show running-config` (`host <MAC> policy <NAME>` — one
+  call, config truth), overlaid into the table: the list shows real
+  policies, and repeat binds of an unchanged binding write nothing.
+- Binding parsing fixture pinned to the captured running-config shape; the
+  lab mock renders the real shape too.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
