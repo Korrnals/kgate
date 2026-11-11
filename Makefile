@@ -34,6 +34,9 @@ build/sing-box:
 	@chmod +x build/sing-box
 	@rm -f build/sb.tgz
 
+# ВНИМАНИЕ: payload (включая ndm-commands.sh) ВШИВАЕТСЯ в бинарь при сборке.
+# Правка examples/ndm-commands.sh без `make build` деплоит СТАРЫЙ скрипт
+# (field lesson 2026-11-11: deploy разлил старые описания политик).
 payload: build/kgate-arm64 build/sing-box
 	@$(MAKE) --no-print-directory payload-common ETC_DIR=$(ETC_DIR)
 

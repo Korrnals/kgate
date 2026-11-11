@@ -94,6 +94,20 @@ Second live-router hotfix of the v1.6.x field E2E.
 - Binding parsing fixture pinned to the captured running-config shape; the
   lab mock renders the real shape too.
 
+## [1.6.3] - 2026-11-11
+
+Owner-remark fix from live usage (CR-041 wave).
+
+### Changed
+- **Policy descriptions in the KeeneticOS web UI are short again.** The v2
+  descriptions were CLI usage hints and the web default-policy dropdown
+  rendered them verbatim («policy-v2: напрямую (ISP). Привязка: …») —
+  «букв много, понятийность ниже». They are now «Туннель» / «Напрямую»;
+  names, CLI and API semantics stay VPN/NO-VPN.
+- Makefile: explicit warning that the payload (ndm-commands.sh included) is
+  embedded at build time — editing the script without `make build` deploys
+  the stale copy (field lesson).
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
