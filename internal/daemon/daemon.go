@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"kgate/internal/policy"
 	"syscall"
 	"time"
 
@@ -612,6 +614,38 @@ func isPid(name string) bool {
 	return name != ""
 }
 
+// proxyAdminDown читает АДМИНИСТРАТИВНОЕ состояние Proxy0 из running-config:
+// операторский off (веб-тумблер / ndmc down) ставит в конфиге `down` и он
+// ДЕРЖИТСЯ (field 2026-11-11), в отличие от operational state, который в окне
+// деплоя закономерно вниз. Autoup проверяет это перед подъёмом, чтобы не
+// переехать клик оператора, пришедшийся на deploy-окно.
+func (d *Daemon) proxyAdminDown() bool {
+	cfg := d.ndm(policy.ShowRunningConfigCmd)
+	if ndmExecFailed(cfg) {
+		return false
+	}
+	inProxy := false
+	for _, raw := range strings.Split(cfg, "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "interface Proxy0") {
+			inProxy = true
+			continue
+		}
+		if inProxy {
+			if strings.HasPrefix(line, "interface ") || line == "!" {
+				return false // блок кончился, admin-down не найден
+			}
+			if line == "down" {
+				return true
+			}
+			if line == "up" {
+				return false
+			}
+		}
+	}
+	return false
+}
+
 // writeIntent пишет intent-файл (adopt-путь супервизора; toggle-хендлер и
 // deploy пишут сами). Ошибка возвращается вызывающему — adopt молчит.
 func (d *Daemon) writeIntent(state string) error {
@@ -767,6 +801,16 @@ func (d *Daemon) Run() error {
 			return
 		}
 		if d.waitPort("127.0.0.1:1080", 60*time.Second) {
+			// оператор мог выключить тумблер прямо в deploy-окне (supervisor
+			// заглушён маркером): admin-down в конфиге держится — принимаем
+			if d.proxyAdminDown() {
+				if err := d.writeIntent("down"); err != nil {
+					logger("autoup: admin-down оператора, intent записать не удалось: " + err.Error())
+					return
+				}
+				logger("autoup: Proxy0 опущен оператором во время деплоя — принято как intent=down, не поднимаю")
+				return
+			}
 			d.toggle("up")
 			d.markSelfToggle()
 			logger("autoup: Proxy0 up (tunnel engine готов)")
