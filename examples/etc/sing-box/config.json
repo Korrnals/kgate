@@ -12,7 +12,6 @@
     {
       "type": "redirect",
       "tag": "redirect-in",
-      "sniff": true,
       "listen": "0.0.0.0",
       "listen_port": 1081
     }
@@ -43,8 +42,9 @@
   "dns": {
     "servers": [
       {
+        "type": "udp",
         "tag": "yandex",
-        "address": "udp://77.88.8.8",
+        "server": "77.88.8.8",
         "detour": "direct"
       }
     ],
@@ -52,6 +52,9 @@
   },
   "route": {
     "rules": [
+      {
+        "action": "sniff"
+      },
       {
         "clash_mode": "Global",
         "outbound": "hy2-out"
@@ -103,7 +106,10 @@
         "path": "/opt/etc/sing-box/rulesets/geoip-ru.srs"
       }
     ],
-    "final": "hy2-out"
+    "final": "hy2-out",
+    "default_domain_resolver": {
+      "server": "yandex"
+    }
   },
   "experimental": {
     "clash_api": {

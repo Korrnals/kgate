@@ -4,7 +4,7 @@
 # при их отсутствии используются examples/etc/*.
 # Артефакты релиза: make release-binaries (Go-бинари) + make ipk (Entware-пакет).
 
-SINGBOX_VER := 1.11.15
+SINGBOX_VER := 1.14.4
 SB_URL := https://github.com/SagerNet/sing-box/releases/download/v$(SINGBOX_VER)/sing-box-$(SINGBOX_VER)-linux-arm64.tar.gz
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.0.0-dev)
 # Пин тулчейна: runner release-pipeline несёт go1.25.12 c GOTOOLCHAIN=local,

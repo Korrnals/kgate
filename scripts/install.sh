@@ -29,12 +29,12 @@ set -eu
 
 REPO="Korrnals/kgate"
 DEST="${KGATE_DEST:-$HOME/.local/bin}"
-SINGBOX_VER=1.11.15   # pinned in the Makefile too; keep in sync
+SINGBOX_VER=1.14.4   # pinned in the Makefile too; keep in sync
 # pinned sha256 of the sing-box tarballs (supply-chain, wave-1 B6; source:
 # https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/… —
 # recompute with sha256sum when bumping SINGBOX_VER):
-SINGBOX_SHA256_arm64="20a6a9cd259a95411599f811a5066513a98db63705a51121252ad27daf96c029"
-SINGBOX_SHA256_amd64="950af37eb2d7e55dddae34a18411cd617303fd99d2dc75bc76b6dd9fcd97d9c5"
+SINGBOX_SHA256_arm64="436441f76ee2f7fe21b5b2d426d3cb261a480455a704865789ad533e4273ec26"
+SINGBOX_SHA256_amd64="699a1b510aa4396b2176d32d1181920399ebf1e267835da6f3b598d0f7c24968"
 
 PLATFORM=""
 for a in "$@"; do
