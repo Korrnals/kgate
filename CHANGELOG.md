@@ -213,6 +213,20 @@ Hotfix on top of the v1.7.0 upgrade.
   operator OFF, flipping intent and leaving the tunnel down. Adoption
   now requires the engine to have been alive for >90s.
 
+## [1.7.2] - 2026-11-11
+
+Field vol.4: the sing-box binary actually lands on Keenetic now.
+
+### Fixed
+- **The bundled sing-box is the MUSL STATIC build.** The previous payload
+  shipped the glibc-dynamic binary, which KeeneticOS cannot load
+  («not found») — and the router had silently kept a foreign Oct-23
+  sing-box instead of kgate's own. Deploys now replace it for real.
+- Payload binaries compressed with upx when available
+  (sing-box 86MB → 27MB).
+- The operator config migrates to the sing-box 1.12+ format on deploy
+  (validated by the router-side `sing-box check` before the atomic swap).
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
