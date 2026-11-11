@@ -202,6 +202,17 @@ Sing-box runtime upgrade (owner directive: fresh version).
 - Validated: `sing-box check` PASS on the migrated template with real
   rulesets; field-verified on the router after deploy.
 
+## [1.7.1] - 2026-11-11
+
+Hotfix on top of the v1.7.0 upgrade.
+
+### Fixed
+- **The tunnel no longer sticks OFF after stack restarts.** The web-switch
+  adoption (v1.6.5) misread the engine warm-up window (Proxy0 down while
+  sing-box is freshly started — any deploy or stack restart) as an
+  operator OFF, flipping intent and leaving the tunnel down. Adoption
+  now requires the engine to have been alive for >90s.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
