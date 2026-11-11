@@ -38,6 +38,11 @@ type Daemon struct {
 	lastSelfToggleMu sync.Mutex
 	lastSelfToggle   time.Time   // момент последнего СОБСТВЕННОГО toggle демона
 	singboxAliveFn   func() bool // seam для тестов: жив ли процесс sing-box
+	// singboxStartedAt: когда движок последний раз СТАРТОВАЛ (старт демона /
+	// рестарт стека). Adoption «внешнего выключения» игнорирует warm-up
+	// (движок свежий + Proxy0 вниз = прогрев, не оператор; поле 2026-11-11:
+	// рестарт стека дважды принимался за тумблер OFF — туннель зависал вниз).
+	singboxStartedAt time.Time
 	// route-pin: источник истины — фактический `show ip route`; pins содержит
 	// только пины, которые мы сами подтвердили (ip → хост-владелец из конфига;
 	// "" = seed ServerIP от deploy до первой сверки)
@@ -53,6 +58,7 @@ func New(cfg *model.Config) *Daemon {
 	d.ndmcFn = d.ndmc                  // тесты подменяют ndmcFn/resolveFn фейками
 	d.resolveFn = tcpLookupIP          // endpoint-пины: DNS-over-TCP (анти- poisoning)
 	d.singboxAliveFn = procScanSingbox // web-switch adoption: жив ли движок (тесты подменяют)
+	d.singboxStartedAt = time.Now()    // движок стартует вместе с демоном
 	return d
 }
 
@@ -550,7 +556,10 @@ func (d *Daemon) flapSelfHeal(logger func(string)) {
 		if d.selfToggleFresh() {
 			return // собственное действие демона в полёте — не вмешиваемся
 		}
-		if d.singboxAlive() {
+		// движок жив ДОЛГОЕ ВРЕМЯ + Proxy0 вниз = оператор (веб-тумблер).
+		// Свежий движок + Proxy0 вниз = рестарт/warm-up — НЕ оператор:
+		// adoption рвал сессии на каждом рестарте стека (поле 2026-11-11 ×2).
+		if d.singboxAlive() && time.Since(d.singboxStartedAt) > 90*time.Second {
 			if err := d.writeIntent("down"); err != nil {
 				logger("supervisor: веб-тумблер опустил Proxy0, но intent записать не удалось: " + err.Error())
 				return

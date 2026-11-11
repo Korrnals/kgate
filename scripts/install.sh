@@ -33,7 +33,7 @@ SINGBOX_VER=1.14.4   # pinned in the Makefile too; keep in sync
 # pinned sha256 of the sing-box tarballs (supply-chain, wave-1 B6; source:
 # https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/… —
 # recompute with sha256sum when bumping SINGBOX_VER):
-SINGBOX_SHA256_arm64="436441f76ee2f7fe21b5b2d426d3cb261a480455a704865789ad533e4273ec26"
+SINGBOX_SHA256_arm64="b95e25f921dc5e17a4cf13327243d1177642c7e35425bf5372862c477c359f56"
 SINGBOX_SHA256_amd64="699a1b510aa4396b2176d32d1181920399ebf1e267835da6f3b598d0f7c24968"
 
 PLATFORM=""
@@ -149,7 +149,7 @@ install_openwrt() {
   if [ -x /usr/bin/sing-box ]; then
     echo "kgate-install: существующий /usr/bin/sing-box сохранён: $(/usr/bin/sing-box version 2>/dev/null | head -1)"
   else
-    SB="sing-box-${SINGBOX_VER}-linux-${GOARCH}.tar.gz"
+    SB="sing-box-${SINGBOX_VER}-linux-${GOARCH}-musl.tar.gz"  # static: runs on Keenetic without a loader
     echo "kgate-install: downloading SagerNet sing-box v${SINGBOX_VER} (${GOARCH})"
     fetch_to "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/${SB}" "$TMP/$SB" \
       || die "sing-box скачать не удалось — поставь /usr/bin/sing-box руками (см. Makefile: SINGBOX_VER=${SINGBOX_VER}) и повтори"

@@ -5,7 +5,8 @@
 # Артефакты релиза: make release-binaries (Go-бинари) + make ipk (Entware-пакет).
 
 SINGBOX_VER := 1.14.4
-SB_URL := https://github.com/SagerNet/sing-box/releases/download/v$(SINGBOX_VER)/sing-box-$(SINGBOX_VER)-linux-arm64.tar.gz
+# MUSL static: Keenetic lacks a glibc loader (field 2026-11-11: dynamic binary = "not found")
+SB_URL := https://github.com/SagerNet/sing-box/releases/download/v$(SINGBOX_VER)/sing-box-$(SINGBOX_VER)-linux-arm64-musl.tar.gz
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.0.0-dev)
 # Пин тулчейна: runner release-pipeline несёт go1.25.12 c GOTOOLCHAIN=local,
 # а stdlib 1.27.3- содержит уязвимости (GO-2026-6611..6617, GO-2026-6809, GO-2026-6859).
@@ -27,12 +28,18 @@ build/kgate-arm64: ensure-empty
 	@mkdir -p build
 	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o build/kgate-arm64 .
 
+# upx-сжатие (если установлен): payload-бинари для роутера — flash/место критичны
+# (релизные клиентские архивы не сжимаем — darwin-совместимость)
+UPX := $(shell command -v upx 2>/dev/null)
 build/sing-box:
 	@mkdir -p build
-	@curl -sSL --retry 3 -o build/sb.tgz "$(SB_URL)"
-	@tar -xzf build/sb.tgz -C build --strip-components=1 --wildcards '*/sing-box'
+	@if [ -f build/sing-box.local ]; then cp -f build/sing-box.local build/sing-box; \
+	  echo "sing-box: локальный файл (offline-сборка)"; else \
+	  curl -sSL --retry 3 -o build/sb.tgz "$(SB_URL)" && \
+	  tar -xzf build/sb.tgz -C build --strip-components=1 --wildcards '*/sing-box' && \
+	  rm -f build/sb.tgz; fi
 	@chmod +x build/sing-box
-	@rm -f build/sb.tgz
+	@if [ -n "$(UPX)" ]; then $(UPX) -q --best build/sing-box && echo "sing-box: upx-сжат"; else echo "sing-box: upx не найден — без сжатия"; fi
 
 # ВНИМАНИЕ: payload (включая ndm-commands.sh) ВШИВАЕТСЯ в бинарь при сборке.
 # Правка examples/ndm-commands.sh без `make build` деплоит СТАРЫЙ скрипт
