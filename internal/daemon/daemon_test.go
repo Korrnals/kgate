@@ -780,3 +780,43 @@ func TestSuperviseProxy_DeployInFlight_NoAdoption(t *testing.T) {
 		}
 	}
 }
+
+// TCP-резолвер: реальный запрос через TCP-транспорт (анти-poisoning для
+// endpoint-пинов). Требует живого DNS в окружении — в CI/офлайн среде SKIP.
+func TestTcpLookupIP_Resolves(t *testing.T) {
+	ips, err := tcpLookupIP("ya.ru")
+	if err != nil {
+		t.Skipf("DNS недоступен в окружении: %v", err)
+	}
+	if len(ips) == 0 {
+		t.Fatalf("пустой ответ")
+	}
+	for _, ip := range ips {
+		if ip == nil || ip.String() == "" {
+			t.Fatalf("битый IP в ответе: %v", ips)
+		}
+	}
+}
+
+// wanDNS-пин (деплой-скрипт, анти-ТСПУ DNS) не должен сниматься endpoint-
+// reconciler'ом: он не endpoint туннеля (поле 2026-11-11: пин 77.88.8.8
+// исчезал после тика reconciliation).
+func TestSyncServerPin_WanDNS_PinNeverRemoved(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	dir := t.TempDir()
+	d.cfg.Daemon.SingBoxConfig = filepath.Join(dir, "config.json")
+	os.WriteFile(d.cfg.Daemon.SingBoxConfig,
+		[]byte(`{"outbounds":[{"type":"hysteria2","server":"cdn.example","tag":"hy2-out"}]}`), 0644)
+	d.resolveFn = func(host string) ([]net.IP, error) { return []net.IP{net.ParseIP("1.2.3.4")}, nil }
+	d.pins = map[string]string{"77.88.8.8": "", "1.2.3.4": "cdn.example"}
+	fake.responses["show interface Proxy0"] = "state: up"
+
+	d.syncServerPin(func(string) {})
+
+	if _, ok := d.pins["77.88.8.8"]; !ok {
+		t.Fatalf("wanDNS-пин снят reconciler'ом (должен пропускаться)")
+	}
+	if _, ok := d.pins["1.2.3.4"]; !ok {
+		t.Fatalf("актуальный endpoint-пин потерян")
+	}
+}

@@ -7,6 +7,7 @@
 package daemon
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -49,8 +50,8 @@ type Daemon struct {
 
 func New(cfg *model.Config) *Daemon {
 	d := &Daemon{cfg: cfg, mgr: newProcManager(cfg), pinWarned: map[string]bool{}}
-	d.ndmcFn = d.ndmc // тесты подменяют ndmcFn/resolveFn фейками
-	d.resolveFn = net.LookupIP
+	d.ndmcFn = d.ndmc                  // тесты подменяют ndmcFn/resolveFn фейками
+	d.resolveFn = tcpLookupIP          // endpoint-пины: DNS-over-TCP (анти- poisoning)
 	d.singboxAliveFn = procScanSingbox // web-switch adoption: жив ли движок (тесты подменяют)
 	return d
 }
@@ -272,6 +273,34 @@ echo dns-rules-applied`)
 
 // ---- hy2 server route-pin (dynamic) ----
 
+// tcpLookupIP resolves host via DNS-over-TCP (system resolver, forced TCP
+// transport). Endpoint pinning MUST NOT trust plain UDP answers: the tunnel
+// front domain (cdn.srwx.ru) is a prime ТСПУ poisoning target — poisoned UDP
+// answers returned bogus IPs (incl. the DNS pin's own 77.88.8.8), which the
+// daemon then pinned as tunnel endpoints, blackholing traffic intermittently
+// (field 2026-11-11: the whole day's «tunnel flaps» boil down to this).
+// DNS-over-TCP responses cannot be injected the same way.
+func tcpLookupIP(host string) ([]net.IP, error) {
+	r := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", address) // force TCP transport
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	addrs, err := r.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		ips = append(ips, a.IP)
+	}
+	return ips, nil
+}
+
 // serverHosts extracts EVERY non-direct outbound endpoint from the sing-box
 // config: the static hy2 out plus any subscription nodes (vless/trojan/ss/
 // hysteria2 — whatever the provider feed merged in). The daemon is the source
@@ -423,6 +452,11 @@ func (d *Daemon) syncServerPin(logger func(string)) {
 	removedDeferred := false
 	for ip, owner := range d.pins {
 		if want[ip] {
+			continue
+		}
+		if ip == wanDNS {
+			// DNS-пин из deploy-скрипта — не endpoint туннеля; reconciler не
+			// должен его снимать (поле 2026-11-11: пин 77.88.8.8 исчезал)
 			continue
 		}
 		if (knownHosts[owner] && !resolvedOK[owner]) || (owner == "" && dnsUnhealthy) {
