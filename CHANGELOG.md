@@ -162,6 +162,19 @@ Field vol.3: honor an OFF click that lands during a deploy.
   right before raising — an operator OFF sets config `down` and holds
   (verified live), so autoup adopts intent=down and skips the raise.
 
+## [1.6.8] - 2026-11-11
+
+Field vol.3 correction — revert of the v1.6.7 autoup check.
+
+### Fixed
+- **Tunnels no longer stick OFF after a cold deploy.** The v1.6.7 autoup
+  admin-state check was unsound: the running-config Proxy0 block mirrors
+  the OPERATIONAL state (`down` while the engine warms up), so the check
+  misread every cold deploy as an operator OFF and silenced the raise.
+  Reverted to the straightforward raise; the deploy-window OFF-click gap
+  (~60-90s during a deploy) is documented as accepted — OFF outside a
+  deploy stays fully sticky.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
