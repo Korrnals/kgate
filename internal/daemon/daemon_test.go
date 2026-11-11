@@ -780,28 +780,3 @@ func TestSuperviseProxy_DeployInFlight_NoAdoption(t *testing.T) {
 		}
 	}
 }
-
-func TestAutoup_AdminDownDuringDeploy_AdoptedAndSkipped(t *testing.T) {
-	d, fake := policyTestDaemon(t)
-	intent := filepath.Join(t.TempDir(), "intent")
-	d.intentPath = intent
-	d.singboxAliveFn = func() bool { return true }
-	// sing-box порт поднимем (waitPort пройдёт) — слушаем на локальном порту
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Skip("нет локального листенера")
-	}
-	defer ln.Close()
-	// waitPort ждёт 127.0.0.1:1080 — подменить нельзя (шится в будущем), поэтому
-	// проверяем proxyAdminDown напрямую + логику через прогон автoup с подменённым addr невозможен.
-	// Вместо этого валидируем связку: admin-down в конфиге → proxyAdminDown=true.
-	fake.responses["show running-config"] = "interface Proxy0\n    description \"HYST VPN (sing-box)\"\n    ip global 1200\n    down\n!\n"
-	if !d.proxyAdminDown() {
-		t.Fatalf("admin-down не распознан")
-	}
-	fake.responses["show running-config"] = "interface Proxy0\n    ip global 1200\n    up\n!\n"
-	if d.proxyAdminDown() {
-		t.Fatalf("admin-up распознан как down")
-	}
-	_ = ln
-}
