@@ -292,6 +292,9 @@ func (r *Runner) Services() {
 	r.step("S99kgate stop + свежий движок + start + статус", `set -e
 # set -e (wave-2 F2); stop/killall «нет процесса» легитимен — || true,
 # финальный status остаётся честным гейтом шага
+# deploy-маркер: супервизор демона 3 минуты НЕ делает web-switch adoption
+# (окно рестарта движка выглядит как «внешнее выключение» — поле 2026-11-11)
+date +%s > /opt/etc/kgate/deploy.epoch
 /opt/etc/init.d/S99kgate stop >/dev/null 2>&1 || true; sleep 1
 killall -9 sing-box xray 2>/dev/null || true
 rm -f /opt/var/run/kgate-singbox.pid /opt/var/run/kgate-xray.pid /opt/var/run/singbox.pid

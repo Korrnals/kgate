@@ -30,7 +30,7 @@ STATUS: approved (owner, 09.11). Implements in kgate 1.5.0.
   `permit global Proxy0` (+ `no permit global ISP`).
 - Default route semantic: the interface with the LOWEST `ip global`
   priority wins (Proxy0 800 < ISP 1000). For "default = ISP" we set Proxy0
-  priority HIGHER than ISP AND make the VPN policy table carry  # [superseded 2026-11-11: Proxy0 removed from the global chain entirely — owner directive «политика по умолчанию = только провайдер»; default policy has NO VPN participation]
+  priority LOWER than ISP (1200, ISP 700) — default = ISP; Proxy0 stays in the chain because ip global membership is REQUIRED for dashboard/priorities/policy bindings (vol.2 field lesson 2026-11-11: no-ip-global made the interface invisible)
   the Proxy0 default route. Bind decides everything.
 - Unbind default: `policy: ` (empty) = follows the DEFAULT route table.
 
@@ -39,7 +39,7 @@ STATUS: approved (owner, 09.11). Implements in kgate 1.5.0.
 1. Policies created by ndm-commands.sh:
    - `VPN`     : permit global Proxy0, no permit global ISP; routes: default via Proxy0 in its table.
    - `NO-VPN`  : permit global ISP, no permit global Proxy0.
-2. Proxy0: NO ip global participation (owner directive 2026-11-11; was: priority 1200) → unbound = DIRECT, no VPN failover in the default chain.
+2. Proxy0 priority 1200 below ISP 700 → unbound = DIRECT (failover to VPN only when ISP is down); the interface stays in the management plane (dashboard, priorities, bindings).
 3. Hotspot: NO device binds created by deploy. Segment binds NOT created
    either. The house is fail-safe direct until the owner runs
    `kgate policy all-vpn` (or binds manually).

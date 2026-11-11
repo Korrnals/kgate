@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -503,6 +504,9 @@ func (d *Daemon) intentFile() string {
 // Собственные toggle демона (CLI/API/autoup/heal) помечаются lastSelfToggle и
 // 30с не участвуют в adoption — гасит гонку «intent записан, верб в полёте».
 func (d *Daemon) flapSelfHeal(logger func(string)) {
+	if d.deployInFlight() {
+		return // deploy-окно (рестарт движка): adoption/heal молчат — autoup рулит
+	}
 	state := d.proxyState()
 	if strings.Contains(state, "state: down") {
 		if d.intentDown() {
@@ -541,6 +545,24 @@ func (d *Daemon) markSelfToggle() {
 	d.lastSelfToggleMu.Lock()
 	defer d.lastSelfToggleMu.Unlock()
 	d.lastSelfToggle = time.Now()
+}
+
+// deployInFlight сообщает, что на роутере идёт/недавно прошёл deploy: штамп
+// deploy.epoch ставит Services-шаг деплоя перед рестартом движка. В этом окне
+// Proxy0 закономерно вниз, sing-box жив — без маркера adoption принимал бы
+// деплой за «веб-тумблер» и глушил intent (поле 2026-11-11: туннель завис
+// вниз после деплоя, autoup пропустил подъём по принятому intent=down).
+func (d *Daemon) deployInFlight() bool {
+	path := filepath.Join(filepath.Dir(d.intentFile()), "deploy.epoch")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	epoch, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	if err != nil {
+		return false
+	}
+	return time.Since(time.Unix(epoch, 0)) < 3*time.Minute
 }
 
 func (d *Daemon) selfToggleFresh() bool {

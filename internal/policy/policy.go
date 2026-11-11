@@ -9,8 +9,10 @@
 //     (access points / bridges: Bridge0="Home", Bridge1="LAN", Bridge2="SMART")
 //     carry the segment and its segment-level binding;
 //   - policy: "" (empty) = unbound = follows the DEFAULT route table, which
-//     policy-v2 makes ISP (the honest default; Proxy0 has NO ip global at all —
-//     the default policy is provider-only, VPN exists solely via explicit bind).
+//     policy-v2 makes ISP (the honest default: ISP ip global 700 < Proxy0 1200 —
+//     Proxy0 is a standby in the chain and the default policy is provider-only;
+//     ip global membership itself is REQUIRED — without it KeeneticOS hides the
+//     interface from the dashboard, priorities and policy bindings).
 //
 // The parser is deliberately tolerant: it keys on `key: value` tokens, not on
 // indentation or field order, so cosmetic drift in ndm output cannot break it.

@@ -758,3 +758,25 @@ func TestSuperviseProxy_SelfToggleGrace_NoAdoption(t *testing.T) {
 		t.Fatalf("собственное действие в grace-окне не должно принимать внешнее состояние: intent=%q", string(b))
 	}
 }
+
+func TestSuperviseProxy_DeployInFlight_NoAdoption(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	dir := t.TempDir()
+	d.intentPath = filepath.Join(dir, "intent")
+	d.singboxAliveFn = func() bool { return true }
+	os.WriteFile(filepath.Join(dir, "deploy.epoch"), []byte(fmt.Sprint(time.Now().Unix())), 0644) // deploy только что
+	fake.responses["show interface Proxy0"] = "state: down"
+	os.WriteFile(d.intentPath, []byte("up\n"), 0644)
+
+	d.flapSelfHeal(func(string) {})
+
+	b, _ := os.ReadFile(d.intentPath)
+	if !strings.Contains(string(b), "up") {
+		t.Fatalf("deploy-окно: adoption не должен переписывать intent: %q", string(b))
+	}
+	for _, c := range fake.cmds {
+		if strings.Contains(c, "interface Proxy0 up") {
+			t.Fatalf("deploy-окно: supervisor не должен рулить Proxy0: %v", fake.cmds)
+		}
+	}
+}
