@@ -64,6 +64,19 @@ fresh suite re-run personally before merge. Review: four cascade waves —
 P1 findings in waves 1–2 fixed and re-audited; waves 3–4 clean from both
 auditors. Six new regression tests cover the fixes above.
 
+## [1.6.1] - 2026-11-11
+
+Hotfix from the live-router field E2E of v1.6.0.
+
+### Fixed
+- **`kgate policy set` refused every bind on real firmware.** The policy
+  parser accepted the lab mock's `name: VPN` render, but KeeneticOS prints
+  `show ip policy` as `policy, name = VPN, description = ...` — the set
+  path failed closed with "policy not found" although the policy objects
+  existed. The real render is parsed first now (older surfaces kept as
+  fallback); the regression test pins the captured firmware output and the
+  lab mock renders the real shape, so the lab parity gap is closed.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
