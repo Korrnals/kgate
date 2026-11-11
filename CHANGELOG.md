@@ -108,6 +108,15 @@ Owner-remark fix from live usage (CR-041 wave).
   embedded at build time — editing the script without `make build` deploys
   the stale copy (field lesson).
 
+## [1.6.4] - 2026-11-11
+
+Owner-remark refinement of the v1.6.3 policy labels (CR-041 wave).
+
+### Changed
+- Web-facing policy descriptions follow the owner's format «word - short
+  explanation»: «Туннель - весь трафик идет через VPN» / «Напрямую - весь
+  трафик идет через провайдера, минуя VPN».
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
