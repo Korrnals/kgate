@@ -68,6 +68,14 @@ func splitKV(line string) (key, val string, ok bool) {
 	return key, val, true
 }
 
+// policyNameRes matches the ndm object-name surfaces across firmware renders:
+// the real `policy, name = VPN, description = ...` (KeeneticOS 4.x, field
+// evidence 2026-11-11) and any `interface, name = ...`-style header is NOT
+// matched — only the policy keyword with an `=` value is.
+var policyNameRes = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)^\s*policy,\s*name\s*=\s*([^\s,]+)`),
+}
+
 var macRE = regexp.MustCompile(`(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
 
 // ValidMAC reports whether s is a colon-separated MAC address.
@@ -178,6 +186,19 @@ func ParsePolicies(out string) []string {
 		}
 		seen[n] = true
 		names = append(names, n)
+	}
+	// real KeeneticOS renders objects as `policy, name = VPN, description = ...`
+	// (field E2E 2026-11-11: the lab mock printed `name: VPN` and the parser
+	// missed the real shape — set-device refused on a live router). The comma
+	// form takes priority: f[0] == "policy," would never match the bare-word
+	// branch below.
+	for _, re := range policyNameRes {
+		for _, m := range re.FindAllStringSubmatch(out, -1) {
+			add(m[1])
+		}
+	}
+	if len(names) > 0 {
+		return names
 	}
 	for _, raw := range strings.Split(out, "\n") {
 		line := strings.TrimSpace(raw)

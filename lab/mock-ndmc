@@ -64,8 +64,11 @@ echo "$CMD" >> "$LOG"
 case "$CMD" in
 	*"show ip hotspot") cat "$HOT" ;;
 	*"show ip policy")
+		# REAL KeeneticOS shape (captured over ssh 2026-11-11): object headers
+		# are `policy, name = X, description = ...`. The old `name: $n` shape
+		# diverged from firmware and masked a parser miss (field E2E).
 		while read -r n; do
-			[ -n "$n" ] && echo "             name: $n"
+			[ -n "$n" ] && printf '\x1b[K\n           policy, name = %s, description = lab policy object\n' "$n"
 		done < "$POL"
 		;;
 	*"no ip policy "*)

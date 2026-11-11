@@ -181,6 +181,35 @@ func TestParsePolicies_NameStyle(t *testing.T) {
 	}
 }
 
+// TestParsePolicies_RealKeeneticOS uses the ACTUAL `ndmc -c "show ip policy"`
+// output captured over ssh from the live router (KeeneticOS 4.x, 2026-11-11):
+// object headers are `policy, name = X, description = ...`, not the mock's
+// `name: X`. Field E2E caught set-device refusing on this exact shape
+// (field-caught: the lab mock diverged from real firmware).
+func TestParsePolicies_RealKeeneticOS(t *testing.T) {
+	out := "\x1b[K\n" +
+		"           policy, name = VPN, description = policy-v2: через туннель (Proxy0). Привязка:\n" +
+		"kgate policy set device MAC VPN: \n" +
+		"                 mark: ffffaaa\n" +
+		"               table4: 4096\n" +
+		"\n" +
+		"                 route4: \n" +
+		"                    route: \n" +
+		"                  destination: 0.0.0.0/0\n" +
+		"                      gateway: 0.0.0.0\n" +
+		"                    interface: Proxy0\n" +
+		"                       metric: 1000\n" +
+		"\x1b[K\x1b[K\n" +
+		"           policy, name = NO-VPN, description = policy-v2: напрямую (ISP). Привязка: kgate policy set device MAC NO-VPN\n" +
+		"                 mark: ffffaaab\n" +
+		"               table4: 4097\n"
+	got := ParsePolicies(out)
+	want := []string{"VPN", "NO-VPN"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestParsePolicies_ConfigStyle(t *testing.T) {
 	out := `
 policy VPN
