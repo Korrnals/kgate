@@ -88,6 +88,7 @@ func TestPolicySetDevice_ByHostname_BindsVPN(t *testing.T) {
 	}
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
+		"show running-config",
 		"show ip policy",
 		"ip hotspot host 5c:eb:f6:aa:bb:01 policy NO-VPN",
 		"system configuration save",
@@ -104,6 +105,7 @@ func TestPolicySetDevice_None_UnbindAttrForm(t *testing.T) {
 	}
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
+		"show running-config",
 		"ip hotspot host 5c:eb:f6:aa:bb:01 no policy",
 		"system configuration save",
 	}, "unbind")
@@ -126,7 +128,7 @@ func TestPolicySetDevice_PolicyObjectMissing(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "не найдена") || !isClientPolicyErr(err) {
 		t.Fatalf("missing policy object must be a user error, got: %v", err)
 	}
-	assertCmds(t, fake, []string{"show ip hotspot", "show ip policy"}, "missing-policy")
+	assertCmds(t, fake, []string{"show ip hotspot", "show running-config", "show ip policy"}, "missing-policy")
 }
 
 func TestPolicySetDevice_MissingHost(t *testing.T) {
@@ -164,8 +166,8 @@ func TestPolicySetSegment_ByName(t *testing.T) {
 		t.Fatalf("unbind segment: %v", err)
 	}
 	assertCmds(t, fake, []string{
-		"show ip hotspot", "show ip policy", "ip hotspot Bridge0 policy NO-VPN", "system configuration save",
-		"show ip hotspot", "show ip policy", "ip hotspot Bridge1 policy VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot Bridge0 policy NO-VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot Bridge1 policy VPN", "system configuration save",
 	}, "segment")
 }
 
@@ -180,7 +182,7 @@ func TestPolicyAllVPN_ActiveOnly_SkipsBound(t *testing.T) {
 		t.Errorf("summary = %v", out)
 	}
 	assertCmds(t, fake, []string{
-		"show ip policy", "show ip hotspot",
+		"show ip policy", "show ip hotspot", "show running-config",
 		"ip hotspot host aa:bb:cc:dd:ee:ff policy VPN",
 		"ip hotspot host aa:bb:cc:dd:ee:10 policy VPN",
 		"ip hotspot host aa:bb:cc:dd:ee:11 policy VPN",
@@ -200,6 +202,7 @@ func TestPolicyAllDirect_UnbindsAllBound(t *testing.T) {
 	}
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
+		"show running-config",
 		"ip hotspot host 5c:eb:f6:aa:bb:01 no policy",
 		"system configuration save",
 	}, "all-direct")
@@ -384,5 +387,5 @@ func TestPolicySetDevice_Idempotent_NoRewrite(t *testing.T) {
 	if out["already"] != true {
 		t.Fatalf("повторный set: already = %v, want true (out=%v)", out["already"], out)
 	}
-	assertCmds(t, fake, []string{"show ip hotspot", "show ip policy"}, "повторный set не должен писать в ndm")
+	assertCmds(t, fake, []string{"show ip hotspot", "show running-config", "show ip policy"}, "повторный set не должен писать в ndm")
 }

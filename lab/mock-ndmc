@@ -71,6 +71,14 @@ case "$CMD" in
 			[ -n "$n" ] && printf '\x1b[K\n           policy, name = %s, description = lab policy object\n' "$n"
 		done < "$POL"
 		;;
+	*"show running-config")
+		# real-shape sample (KeeneticOS 4.x): the daemon overlays bindings from
+		# this config (field E2E 2026-11-11 — hotspot show renders policy empty)
+		echo "ip hotspot"
+		echo "    policy Bridge1 permit"
+		echo "    host aa:bb:cc:dd:ee:01 permit"
+		echo "    host aa:bb:cc:dd:ee:01 policy VPN"
+		;;
 	*"no ip policy "*)
 		n=${CMD##*no ip policy }
 		# grep -v exits 1 when the LAST name is filtered out — install the

@@ -339,3 +339,26 @@ func TestSetGlobalPriorityCmd(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// TestParseHotspotBindings_RealRunningConfig pins the captured `show
+// running-config` shape (live router 2026-11-11): bindings are
+// `    host <MAC> policy <NAME>` lines inside `ip hotspot`; the segment
+// line `policy Bridge1 permit` must NOT match (different keyword order).
+func TestParseHotspotBindings_RealRunningConfig(t *testing.T) {
+	cfg := `ip hotspot
+    policy Bridge1 permit
+    host a2:1c:56:1d:30:92 permit
+    host a2:1c:56:1d:30:92 priority 3
+    host F4:E8:C7:C4:4F:A4 permit
+    host f4:e8:c7:c4:4f:a4 policy VPN
+    host 5a:e2:24:f9:69:e6 permit
+    host 5a:e2:24:f9:69:e6 priority 3
+`
+	got := ParseHotspotBindings(cfg)
+	if got["f4:e8:c7:c4:4f:a4"] != "VPN" {
+		t.Errorf("f4:e8: got %q", got["f4:e8:c7:c4:4f:a4"])
+	}
+	if len(got) != 1 {
+		t.Errorf("unexpected extra bindings: %v", got)
+	}
+}

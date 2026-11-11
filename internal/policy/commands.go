@@ -108,7 +108,13 @@ func DeletePolicyCmd(name string) (string, error) {
 const (
 	ShowHotspotCmd = "show ip hotspot"
 	ShowPolicies   = "show ip policy"
-	SaveCmd        = "system configuration save"
+	// ShowRunningConfigCmd is the binding SOURCE OF TRUTH on KeeneticOS 4.x:
+	// `show ip hotspot` renders `policy:` EMPTY for bound hosts (field E2E
+	// 2026-11-11), the per-host show renders it but needs one call per host;
+	// running-config carries `host <MAC> policy <NAME>` for every binding in
+	// a single call.
+	ShowRunningConfigCmd = "show running-config"
+	SaveCmd              = "system configuration save"
 )
 
 // SetGlobalPriorityCmd: `interface Proxy0 ip global <prio>` — policy-v2 sets

@@ -35,12 +35,31 @@ func isClientPolicyErr(err error) bool {
 // NOT silently parsed into an empty table (wave-1 C1: that surfaced as a
 // "healthy" bound=0/total=0 response while ndmc was down) — callers must
 // surface the error as a 500.
+//
+// Bindings come from `show running-config` (field E2E 2026-11-11: the
+// firmware renders `policy:` EMPTY in the global `show ip hotspot`, so the
+// table alone can only ever show "unbound" — the config carries
+// `host <MAC> policy <NAME>` for every binding and is the source of truth).
+// The overlay fills Host.Policy, which drives the list view, the active
+// column and the set-path idempotence check.
 func (d *Daemon) hotspotTable() (policy.Table, error) {
 	out := d.ndm(policy.ShowHotspotCmd)
 	if ndmExecFailed(out) { // wave-2 F5: SHOW-путь — только exec-сбой, не вербальный матч
 		return policy.Table{}, fmt.Errorf("ndmc не ответил на %q: %s", policy.ShowHotspotCmd, strings.TrimSpace(out))
 	}
-	return policy.ParseHotspot(out), nil
+	tbl := policy.ParseHotspot(out)
+
+	cfg := d.ndm(policy.ShowRunningConfigCmd)
+	if ndmExecFailed(cfg) {
+		return policy.Table{}, fmt.Errorf("ndmc не ответил на %q: %s", policy.ShowRunningConfigCmd, strings.TrimSpace(cfg))
+	}
+	bindings := policy.ParseHotspotBindings(cfg)
+	for i := range tbl.Hosts {
+		if p, ok := bindings[strings.ToLower(tbl.Hosts[i].MAC)]; ok {
+			tbl.Hosts[i].Policy = p
+		}
+	}
+	return tbl, nil
 }
 
 // policyNames lists the policy objects ndm currently knows (error surface:

@@ -213,6 +213,23 @@ func ParsePolicies(out string) []string {
 	return names
 }
 
+// ParseHotspotBindings extracts MAC→policy bindings from `show running-config`
+// (the binding source of truth on KeeneticOS 4.x — see ShowRunningConfigCmd).
+// MACs are normalized to lowercase; only explicit `host <MAC> policy <NAME>`
+// lines count (the bare `policy Bridge1 permit` segment lines do not match).
+func ParseHotspotBindings(runCfg string) map[string]string {
+	out := map[string]string{}
+	for _, raw := range strings.Split(runCfg, "\n") {
+		line := strings.TrimSpace(raw)
+		if m := hotspotBindingRE.FindStringSubmatch(line); m != nil {
+			out[strings.ToLower(m[1])] = m[2]
+		}
+	}
+	return out
+}
+
+var hotspotBindingRE = regexp.MustCompile(`(?i)^host\s+([0-9a-f:]{17})\s+policy\s+([A-Za-z0-9_-]+)$`)
+
 // ResolveHost matches target (MAC or hostname, case-insensitive) against the
 // parsed table. Ambiguous hostname matches are an error (MAC is the unambiguous
 // form — the CLI help says so).
