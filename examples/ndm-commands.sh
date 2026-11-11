@@ -1,9 +1,10 @@
 #!/bin/sh
 # {routerctl} ndm-конфиг policy-v2 (design: docs/dev/policy-v2-design.md).
 # Модель v1.5: РОВНО ДВЕ политики — VPN (туннель) и NO-VPN (напрямую).
-# ЧЕСТНЫЙ ДЕФОЛТ: Proxy0 ip global 1200 > ISP 1000 → дефолтный маршрут дома
-# = ISP. Устройство БЕЗ привязки ходит НАПРЯМУЮ; туннель включается ТОЛЬКО
-# явной привязкой (kgate policy set device … / kgate policy all-vpn).
+# ЧЕСТНЫЙ ДЕФОЛТ (поле-приёмка 2026-11-11): Proxy0 НЕ участвует в глобальной
+# цепочке вовсе (no ip global) → дефолтная политика дома = ТОЛЬКО провайдер,
+# без VPN-фейловера. Устройство БЕЗ привязки ходит НАПРЯМУЮ; туннель
+# включается ТОЛЬКО явной привязкой (kgate policy set device … / all-vpn).
 # Deploy НЕ создаёт ни device-, ни segment-привязок: дом остаётся fail-safe
 # прямым до явного решения владельца.
 # Legacy: VPN-TV / VPN-Laptops-Phones / DIRECT-NOVPN (эскейпы v1) мигрируют —
@@ -27,10 +28,13 @@ ndmc -c "interface Proxy0"
 ndmc -c "interface Proxy0 description \"HYST VPN (sing-box)\""
 ndmc -c "interface Proxy0 security-level public"
 # policy-v2: 1200 (было 800). Дефолт забирает интерфейс с МЕНЬШИМ приоритетом:
-# ISP=1000 < 1200 → дефолт = ISP (честный дефолт). Политика VPN несёт дефолт
-# через Proxy0 (permit global Proxy0) — привязанное устройство в туннеле даже
-# при дефолте-ISP.
-ndmc -c "interface Proxy0 ip global 1200"
+# БЕЗ УЧАСТИЯ В ГЛОБАЛЬНОЙ ЦЕПОЧКЕ (поле-приёмка 2026-11-11, решение владельца:
+# «политика по умолчанию — только провайдер, без впнов»): Proxy0 НЕ имеет ip
+# global вовсе — дефолтная политика дома = ТОЛЬКО ISP (без VPN-фейловера).
+# VPN доступен исключительно через явную привязку (kgate policy set):
+# таблица политики VPN несёт свой маршрут 0.0.0.0/0 via Proxy0.
+# Идемпотентная гарантия: сносим ip global, если осел от старых версий.
+ndmc -c "interface Proxy0 no ip global" 2>/dev/null || true
 ndmc -c "interface Proxy0 proxy protocol socks5"
 ndmc -c "interface Proxy0 proxy upstream 127.0.0.1 1090"
 ndmc -c "interface Proxy0 proxy connect via ISP"

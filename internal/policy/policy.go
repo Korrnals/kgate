@@ -9,7 +9,8 @@
 //     (access points / bridges: Bridge0="Home", Bridge1="LAN", Bridge2="SMART")
 //     carry the segment and its segment-level binding;
 //   - policy: "" (empty) = unbound = follows the DEFAULT route table, which
-//     policy-v2 makes ISP (the honest default; Proxy0 ip global 1200 > ISP 1000).
+//     policy-v2 makes ISP (the honest default; Proxy0 has NO ip global at all —
+//     the default policy is provider-only, VPN exists solely via explicit bind).
 //
 // The parser is deliberately tolerant: it keys on `key: value` tokens, not on
 // indentation or field order, so cosmetic drift in ndm output cannot break it.

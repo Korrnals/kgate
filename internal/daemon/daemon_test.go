@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"kgate/internal/model"
 )
@@ -441,7 +442,10 @@ func TestSyncPin_AAAAOnly_KeepsConfirmedPins(t *testing.T) {
 }
 
 func TestFlapSelfHeal_IntentUp_Reraises(t *testing.T) {
-	// kgate-1.4.6: Proxy0 down + intent file "up" (or absent) → re-raise
+	// kgate-1.4.6 re-raise, уточнено поле-приёмкой 2026-11-11: re-raise теперь
+	// ТОЛЬКО при мёртвом движке (crash flap). При ЖИВОМ sing-box down+intent=up
+	// = внешнее выключение → adoption (TestSuperviseProxy_ExternalDown_AdoptedAsIntent).
+	// Здесь seam singboxAliveFn не задан → дефолт false → движок «мёртв» → heal.
 	d, fake := testDaemon(t, "1.1.1.1", "hysteria2/cdn.example")
 	d.intentPath = filepath.Join(t.TempDir(), "intent")
 	fake.responses = map[string]string{
@@ -460,8 +464,10 @@ func TestFlapSelfHeal_IntentUp_Reraises(t *testing.T) {
 	}
 	_ = logs
 
-	// intent=up явно → тоже ре-райз
+	// intent=up явно → тоже ре-райз (сбрасываем grace-метку первой фазы —
+	// superviseProxy не вмешивается 30с после собственного toggle)
 	os.WriteFile(d.intentPath, []byte("up\n"), 0644)
+	d.lastSelfToggle = time.Time{}
 	fake.cmds = nil
 	d.flapSelfHeal(func(string) {})
 	found = false
@@ -673,5 +679,82 @@ func TestPolicyExists_NdmcDown_PropagatesError(t *testing.T) {
 	}
 	if isClientPolicyErr(err) {
 		t.Fatalf("ошибка ndmc ошибочно классифицирована как user-ошибка (400 вместо 500): %v", err)
+	}
+}
+
+// --- web-switch adoption (поле-приёмка 2026-11-11: тумблер должен работать) ---
+
+func TestSuperviseProxy_ExternalDown_AdoptedAsIntent(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	intent := filepath.Join(t.TempDir(), "intent")
+	d.intentPath = intent
+	d.singboxAliveFn = func() bool { return true } // sing-box жив → это ВЫКЛЮЧАТЕЛЬ, не крэш
+	fake.responses["show interface Proxy0"] = "state: down"
+	os.WriteFile(intent, []byte("up\n"), 0644)
+
+	var logs []string
+	d.flapSelfHeal(func(m string) { logs = append(logs, m) })
+
+	b, _ := os.ReadFile(intent)
+	if !strings.Contains(string(b), "down") {
+		t.Fatalf("intent не принят как down: %q (logs=%v)", string(b), logs)
+	}
+	for _, c := range fake.cmds {
+		if strings.Contains(c, "interface Proxy0 up") {
+			t.Fatalf("внешнее выключение откачено — туннель подняли: %v", fake.cmds)
+		}
+	}
+}
+
+func TestSuperviseProxy_CrashFlap_StillHealed(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	intent := filepath.Join(t.TempDir(), "intent")
+	d.intentPath = intent
+	d.singboxAliveFn = func() bool { return false } // движок мёртв → flap self-heal
+	fake.responses["show interface Proxy0"] = "state: down"
+	os.WriteFile(intent, []byte("up\n"), 0644)
+
+	d.flapSelfHeal(func(string) {})
+
+	found := false
+	for _, c := range fake.cmds {
+		if strings.Contains(c, "interface Proxy0 up") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("крэш-флап не вылечен (нет Proxy0 up): %v", fake.cmds)
+	}
+}
+
+func TestSuperviseProxy_ExternalUp_AdoptedAsIntent(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	intent := filepath.Join(t.TempDir(), "intent")
+	d.intentPath = intent
+	d.singboxAliveFn = func() bool { return true }
+	fake.responses["show interface Proxy0"] = "state: up"
+	os.WriteFile(intent, []byte("down\n"), 0644) // выключен kgate toggle off…
+	d.flapSelfHeal(func(string) {})              // …но владелец включил тумблером
+
+	b, _ := os.ReadFile(intent)
+	if !strings.Contains(string(b), "up") {
+		t.Fatalf("внешнее включение не принято: intent=%q", string(b))
+	}
+}
+
+func TestSuperviseProxy_SelfToggleGrace_NoAdoption(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	intent := filepath.Join(t.TempDir(), "intent")
+	d.intentPath = intent
+	d.singboxAliveFn = func() bool { return true }
+	fake.responses["show interface Proxy0"] = "state: down"
+	os.WriteFile(intent, []byte("up\n"), 0644)
+	d.markSelfToggle() // только что сам тогглили — 30с грейс
+
+	d.flapSelfHeal(func(string) {})
+
+	b, _ := os.ReadFile(intent)
+	if !strings.Contains(string(b), "up") {
+		t.Fatalf("собственное действие в grace-окне не должно принимать внешнее состояние: intent=%q", string(b))
 	}
 }

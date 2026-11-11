@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,6 +29,12 @@ type Daemon struct {
 	cfg     *model.Config
 	mgr     *procManager
 	cfgWarn bool // template placeholders detected: do not auto-raise a dead tunnel
+	// web-switch adoption (поле-приёмка 2026-11-11): внешний down/up Proxy0
+	// (веб-тумблер, ручной ndmc) принимается как намерение владельца —
+	// supervisor переписывает intent-файл, а не откатывает действие.
+	lastSelfToggleMu sync.Mutex
+	lastSelfToggle   time.Time   // момент последнего СОБСТВЕННОГО toggle демона
+	singboxAliveFn   func() bool // seam для тестов: жив ли процесс sing-box
 	// route-pin: источник истины — фактический `show ip route`; pins содержит
 	// только пины, которые мы сами подтвердили (ip → хост-владелец из конфига;
 	// "" = seed ServerIP от deploy до первой сверки)
@@ -42,6 +49,7 @@ func New(cfg *model.Config) *Daemon {
 	d := &Daemon{cfg: cfg, mgr: newProcManager(cfg), pinWarned: map[string]bool{}}
 	d.ndmcFn = d.ndmc // тесты подменяют ndmcFn/resolveFn фейками
 	d.resolveFn = net.LookupIP
+	d.singboxAliveFn = procScanSingbox // web-switch adoption: жив ли движок (тесты подменяют)
 	return d
 }
 
@@ -483,20 +491,109 @@ func (d *Daemon) intentFile() string {
 	return defaultIntentPath
 }
 
-// flapSelfHeal (kgate-1.4.4/1.4.6): a sing-box hiccup (hy2 re-handshake,
-// server failover) can drop Proxy0 — and Proxy0 is the house default route,
-// so everything loses connectivity until someone raises it by hand.
-// Re-raise on tick unless the operator intent file says "down" (written by
-// `kgate toggle off` only). The web switch cannot produce a lasting off.
+// superviseProxy (kgate-1.4.4 self-heal, переработано поле-приёмкой
+// 2026-11-11 — «веб-тумблер должен работать»):
+//
+//	down + intent=down            → ничего (оператор выключил, уважаем)
+//	down + intent=up + sing-box ЖИВ  → ВНЕШНЕЕ выключение (веб-тумблер / ndmc) —
+//	                                  ПРИНИМАЕМ: intent := down, НЕ поднимаем
+//	down + intent=up + sing-box МЁРТВ → крэш движка — flap self-heal: поднимаем
+//	up + intent=down + sing-box ЖИВ  → внешнее включение — принимаем: intent := up
+//
+// Собственные toggle демона (CLI/API/autoup/heal) помечаются lastSelfToggle и
+// 30с не участвуют в adoption — гасит гонку «intent записан, верб в полёте».
 func (d *Daemon) flapSelfHeal(logger func(string)) {
-	if !strings.Contains(d.proxyState(), "state: down") {
+	state := d.proxyState()
+	if strings.Contains(state, "state: down") {
+		if d.intentDown() {
+			return // operator intent: off (kgate toggle off / принятый веб-тумблер)
+		}
+		if d.selfToggleFresh() {
+			return // собственное действие демона в полёте — не вмешиваемся
+		}
+		if d.singboxAlive() {
+			if err := d.writeIntent("down"); err != nil {
+				logger("supervisor: веб-тумблер опустил Proxy0, но intent записать не удалось: " + err.Error())
+				return
+			}
+			logger("supervisor: Proxy0 опущен вне kgate (веб-тумблер) — принят как intent=down, туннель остаётся выключенным")
+			return
+		}
+		// sing-box мёртв — это крэш движка, не действие оператора: flap self-heal
+		d.toggle("up")
+		d.markSelfToggle()
+		logger("supervisor: Proxy0 упал при intent=up (движок мёртв) — поднимаю (flap self-heal)")
 		return
 	}
-	if d.intentDown() {
-		return // operator intent: off (kgate toggle off)
+	// Proxy0 поднят, но intent говорит down: внешний up (веб-тумблер ON) —
+	// принимаем как намерение (симметрично down), иначе self-heal позже
+	// задушит легитимное включение.
+	if d.intentDown() && d.singboxAlive() && !d.selfToggleFresh() {
+		if err := d.writeIntent("up"); err == nil {
+			logger("supervisor: Proxy0 поднят вне kgate (веб-тумблер) — принят как intent=up")
+		}
 	}
-	d.toggle("up")
-	logger("supervisor: Proxy0 упал при intent=up — поднимаю (flap self-heal)")
+}
+
+// markSelfToggle помечает момент собственного toggle демона (grace-окно для
+// superviseProxy — не путать собственное действие с внешним переключением).
+func (d *Daemon) markSelfToggle() {
+	d.lastSelfToggleMu.Lock()
+	defer d.lastSelfToggleMu.Unlock()
+	d.lastSelfToggle = time.Now()
+}
+
+func (d *Daemon) selfToggleFresh() bool {
+	d.lastSelfToggleMu.Lock()
+	defer d.lastSelfToggleMu.Unlock()
+	return time.Since(d.lastSelfToggle) < 30*time.Second
+}
+
+// singboxAlive проверяет, жив ли процесс sing-box на роутере (локальный proc
+// скан: демон исполняется на том же хосте). Различает «крэш движка» (heal) и
+// «ручное выключение тумблером» (adopt): тумблер опускает ТОЛЬКО интерфейс,
+// процесс sing-box остаётся жить.
+func (d *Daemon) singboxAlive() bool {
+	if d.singboxAliveFn != nil {
+		return d.singboxAliveFn()
+	}
+	return false // nil seam (прямая сборка в тестах): детерминированно «мёртв» → heal-путь; прод-конструктор New() ставит procScanSingbox
+}
+
+// procScanSingbox — /proc cmdline scan for a live sing-box process.
+func procScanSingbox() bool {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return true // не смогли проверить — считаем живым (не откатываем внешнее)
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !isPid(e.Name()) {
+			continue
+		}
+		b, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(b), "sing-box") {
+			return true
+		}
+	}
+	return false
+}
+
+func isPid(name string) bool {
+	for _, r := range name {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return name != ""
+}
+
+// writeIntent пишет intent-файл (adopt-путь супервизора; toggle-хендлер и
+// deploy пишут сами). Ошибка возвращается вызывающему — adopt молчит.
+func (d *Daemon) writeIntent(state string) error {
+	return os.WriteFile(d.intentFile(), []byte(state+"\n"), 0644)
 }
 
 func (d *Daemon) proxyState() string {
@@ -649,6 +746,7 @@ func (d *Daemon) Run() error {
 		}
 		if d.waitPort("127.0.0.1:1080", 60*time.Second) {
 			d.toggle("up")
+			d.markSelfToggle()
 			logger("autoup: Proxy0 up (tunnel engine готов)")
 		} else {
 			logger("autoup: sing-box не поднялся за 60с — Proxy0 не трогаю")
@@ -706,6 +804,7 @@ func (d *Daemon) toggleHandler() http.HandlerFunc {
 			return
 		}
 		out := d.toggle(verb)
+		d.markSelfToggle()
 		if ndmcFailed(out) {
 			// intent is already persisted (the off-switch holds); the response
 			// must surface the ndmc rejection, not fake success (wave-1 C4)
