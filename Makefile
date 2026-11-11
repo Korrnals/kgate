@@ -8,10 +8,10 @@ SINGBOX_VER := 1.11.15
 SB_URL := https://github.com/SagerNet/sing-box/releases/download/v$(SINGBOX_VER)/sing-box-$(SINGBOX_VER)-linux-arm64.tar.gz
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.0.0-dev)
 # Пин тулчейна: runner release-pipeline несёт go1.25.12 c GOTOOLCHAIN=local,
-# а stdlib 1.27.1- содержит уязвимости (GO-2026-6611..6617, GO-2026-6809).
+# а stdlib 1.27.3- содержит уязвимости (GO-2026-6611..6617, GO-2026-6809, GO-2026-6859).
 # GOTOOLCHAIN тут перекрывает runner'овский local — все сборки/гейты идут на
 # одном тулчейне с чистым stdlib (голос: runner качает тулчейн при первом запуске).
-export GOTOOLCHAIN := go1.27.3
+export GOTOOLCHAIN := go1.27.4
 # -s -w: strip debug tables — ~14.3MB → ~10-11MB (мало места на встроенных дисках роутеров)
 LDFLAGS := -s -w -X main.appVersion=$(VERSION)
 # каталог релизных артефактов (goreleaser-хук разводит свои ipk в отдельный

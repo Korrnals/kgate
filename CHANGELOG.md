@@ -76,6 +76,8 @@ Hotfix from the live-router field E2E of v1.6.0.
   existed. The real render is parsed first now (older surfaces kept as
   fallback); the regression test pins the captured firmware output and the
   lab mock renders the real shape, so the lab parity gap is closed.
+- Build: toolchain pin bumped to go1.27.4 — the release security gate
+  caught GO-2026-6859 (net/http MaxBytesReader header race) in go1.27.3.
 
 ## [Unreleased]
 
