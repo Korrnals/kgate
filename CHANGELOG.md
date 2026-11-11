@@ -6,25 +6,6 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- **Declarative hotspot policies.** The new `policies` section of
-  `kgate.yaml` declares segment (`Home: VPN`) and device
-  (`mac: …, policy: NO-VPN`) bindings. `kgate apply` applies them
-  idempotently after the ndm stage — it reads the live state
-  (`show running-config`, the binding source of truth) and issues only the
-  missing ndm verbs, then a single `system configuration save`; a converged
-  state produces no writes at all. It also guarantees the VPN/NO-VPN policy
-  objects exist (full ndm-commands.sh recipe as IaC fallback). Segment keys
-  are ndm interface names exactly as running-config renders them
-  (`policy Home VPN`) — descriptions are never resolved (kgate segment
-  resolver bug 3de63d9e is bypassed). Logical policies map 1:1 to the router
-  objects: `VPN` (web UI label «Туннель - весь трафик идет через VPN») and
-  `NO-VPN` («Напрямую - …»).
-- `kgate destroy` now respects declared policies: declared bindings are
-  unbound (`no policy`) before policy deletion (ndm refuses to delete a
-  policy while bindings remain), so destroy → re-apply restores the declared
-  state from scratch.
-
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path
@@ -248,7 +229,26 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
 - The operator config migrates to the sing-box 1.12+ format on deploy
   (validated by the router-side `sing-box check` before the atomic swap).
 
-## [Unreleased]
+## [1.8.0] - 2026-11-12
+
+### Added
+- **Declarative hotspot policies.** The new `policies` section of
+  `kgate.yaml` declares segment (`Home: VPN`) and device
+  (`mac: …, policy: NO-VPN`) bindings. `kgate apply` applies them
+  idempotently after the ndm stage — it reads the live state
+  (`show running-config`, the binding source of truth) and issues only the
+  missing ndm verbs, then a single `system configuration save`; a converged
+  state produces no writes at all. It also guarantees the VPN/NO-VPN policy
+  objects exist (full ndm-commands.sh recipe as IaC fallback). Segment keys
+  are ndm interface names exactly as running-config renders them
+  (`policy Home VPN`) — descriptions are never resolved (kgate segment
+  resolver bug 3de63d9e is bypassed). Logical policies map 1:1 to the router
+  objects: `VPN` (web UI label «Туннель - весь трафик идет через VPN») and
+  `NO-VPN` («Напрямую - …»).
+- `kgate destroy` now respects declared policies: declared bindings are
+  unbound (`no policy`) before policy deletion (ndm refuses to delete a
+  policy while bindings remain), so destroy → re-apply restores the declared
+  state from scratch.
 
 ## [1.5.0] - 2026-11-09
 
@@ -361,8 +361,6 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   router while kgate's own inbounds and RU-split routing stay intact.
   The deploy files-stage no longer overwrites a subscription-managed
   config. URI-list parser is unit-tested (reality/flow/obfs/ss variants).
-
-## [Unreleased]
 
 ### Known limitations
 - KeeneticOS dashboard switch quirk RESOLVED for ≥ 1.4.3 (deploy/destroy now
