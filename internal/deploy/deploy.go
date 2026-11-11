@@ -127,6 +127,8 @@ func DestroyPlan(c *model.Config) string {
   - удалить файлы: /opt/sbin/{kgate,sing-box}, /opt/etc/{kgate,sing-box},
     init-скрипт, ndm-commands.sh, логи
   - ndm: снять route-pin'ы (%s, 77.88.8.8) и name-server 77.88.8.8
+  - ndm: снять декларированные в kgate.yaml policies-привязки
+    (сегменты и устройства, секция policies)
   - ndm: ПОЛНОСТЬЮ удалить интерфейс Proxy0 и политики-сценарии
     (v2: VPN, NO-VPN; legacy v1: VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
   - проверить, что следов kgate в running-config не осталось
@@ -447,6 +449,12 @@ echo "pins removed"`
 	r.step("снятие route-pin'ов и name-server", pins)
 
 	fmt.Println("→ destroy: ndm (объекты)")
+	// декларативные привязки снимаются ДО удаления политик: ndm отказывается
+	// удалять `no ip policy`, пока на политике остаются привязки (сегментные
+	// или device-); `no policy` верб безопасен и при отсутствии привязки
+	if policiesDeclared(r.c.Policies) {
+		r.step("снятие декларированных policies-привязок (сегменты, устройства)", policiesUnbindScript(r.c.Policies))
+	}
 	// policy-v2: VPN/NO-VPN + legacy-эскейпы v1 (установка до миграции ещё
 	// держит их; сносим в любом случае — destroy должен чистить обе эпохи)
 	r.step("удаление интерфейса Proxy0 и политик (v2 + legacy v1)", `ndmc -c "no ip policy VPN"

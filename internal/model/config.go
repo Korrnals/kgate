@@ -1,11 +1,14 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"kgate/internal/policy"
 )
 
 // Config is the single kgate configuration file (kgate.yaml).
@@ -22,6 +25,12 @@ type Config struct {
 	Subscription struct {
 		URL string `yaml:"url"` // провайдер подписки (см. kgate subscribe)
 	} `yaml:"subscription"`
+
+	// Policies — декларативные hotspot-привязки (1.8.0): применяются стадией
+	// deploy policies (после ndm, идемпотентно), снимаются destroy'ом.
+	// Логические политики VPN|NO-VPN маппятся 1:1 на ndm-объекты, создаваемые
+	// ndm-commands.sh (VPN несёт описание «Туннель - весь трафик идет через VPN»).
+	Policies Policies `yaml:"policies"`
 
 	API struct {
 		Port int    `yaml:"port"` // daemon mTLS API port on the router
@@ -47,6 +56,44 @@ type Config struct {
 		WebRoot       string `yaml:"web_root"`   // server CA/certs on the router
 		Log           string `yaml:"log"`
 	} `yaml:"daemon"`
+}
+
+// DevicePolicy — MAC-привязка устройства к логической политике (VPN|NO-VPN).
+type DevicePolicy struct {
+	MAC    string `yaml:"mac"`
+	Policy string `yaml:"policy"` // VPN | NO-VPN
+}
+
+// Policies — секция policies в kgate.yaml. Ключ Segments — ndm-имя интерфейса
+// РОВНО КАК ЕГО ОТДАЁТ running-config (`policy Home VPN`), НЕ description:
+// резолвер описаний kgate не используется (bug 3de63d9e — show отдаёт
+// description, ndm-имя резолвится в пустоту; применяется напрямую).
+type Policies struct {
+	Segments map[string]string `yaml:"segments"` // ndm-имя интерфейса → VPN|NO-VPN
+	Devices  []DevicePolicy    `yaml:"devices"`
+}
+
+// Validate проверяет декларацию: enum VPN|NO-VPN, форма MAC, ndm-безопасный
+// токен сегмента. Каждое сообщение называет оскорбивший элемент конфига.
+func (p *Policies) Validate() error {
+	validPol := func(v string) bool { return v == policy.PolicyVPN || v == policy.PolicyNoVPN }
+	for seg, pol := range p.Segments {
+		if !validPol(pol) {
+			return fmt.Errorf("policies.segments[%q]: политика %q — разрешены VPN|NO-VPN", seg, pol)
+		}
+		if seg == "" || strings.ContainsAny(seg, "\"'`$;&|<>\\\n\r\t ") {
+			return fmt.Errorf("policies.segments[%q]: имя сегмента пустое или содержит недопустимые для ndm символы", seg)
+		}
+	}
+	for i, d := range p.Devices {
+		if !validPol(d.Policy) {
+			return fmt.Errorf("policies.devices[%d] (mac %q): политика %q — разрешены VPN|NO-VPN", i, d.MAC, d.Policy)
+		}
+		if !policy.ValidMAC(d.MAC) {
+			return fmt.Errorf("policies.devices[%d]: mac %q не похож на MAC (aa:bb:cc:dd:ee:ff)", i, d.MAC)
+		}
+	}
+	return nil
 }
 
 func (c *Config) fillDefaults() {

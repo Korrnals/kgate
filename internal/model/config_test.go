@@ -55,3 +55,48 @@ func TestLoadExpandsTildeFromYamlAndEnv(t *testing.T) {
 		t.Fatalf("yaml tilde not expanded: %q", c.API.CA)
 	}
 }
+
+// 1.8.0: секция policies парсится из yaml; пустая секция валидна.
+func TestLoadPoliciesSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kgate.yaml")
+	body := `
+policies:
+  segments:
+    Home: VPN
+    Bridge2: NO-VPN
+  devices:
+    - mac: "54:AE:BC:9C:DE:BF"
+      policy: NO-VPN
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Policies.Segments["Home"] != "VPN" || c.Policies.Segments["Bridge2"] != "NO-VPN" {
+		t.Fatalf("segments = %v", c.Policies.Segments)
+	}
+	if len(c.Policies.Devices) != 1 || c.Policies.Devices[0].MAC != "54:AE:BC:9C:DE:BF" || c.Policies.Devices[0].Policy != "NO-VPN" {
+		t.Fatalf("devices = %+v", c.Policies.Devices)
+	}
+	if err := c.Policies.Validate(); err != nil {
+		t.Fatalf("валидная декларация отклонена: %v", err)
+	}
+}
+
+// Конфиг без секции policies — пустая декларация (валидно, fail-safe прямой дефолт).
+func TestLoadWithoutPoliciesSection(t *testing.T) {
+	c, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Policies.Segments) != 0 || len(c.Policies.Devices) != 0 {
+		t.Fatalf("ожидалась пустая декларация: %+v", c.Policies)
+	}
+	if err := c.Policies.Validate(); err != nil {
+		t.Fatalf("пустая декларация отклонена: %v", err)
+	}
+}

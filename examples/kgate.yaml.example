@@ -26,3 +26,18 @@ daemon:                  # секция для `kgate serve` (на роутер�
   api_listen: ":9443"            # mTLS API (клиентские серты обязательны)
   web_root: /opt/etc/kgate       # ca.crt/server.crt/server.key демона
   log: /opt/var/log/kgate.log
+
+# --- policies: декларативные hotspot-привязки (1.8.0) -----------------------
+# kgate apply применяет их идемпотентно после ndm-стадии (только недостающие
+# вербы), kgate destroy снимает перед удалением политик.
+# Ключ segments = ndm-имя интерфейса РОВНО как в running-config
+# (`policy Home VPN`), НЕ description («WLAN»). Разрешены VPN|NO-VPN:
+# VPN → объект «VPN» («Туннель - весь трафик идет через VPN»),
+# NO-VPN → объект «NO-VPN» («Напрямую - …»).
+# policies:
+#   segments:
+#     Home: VPN
+#     Bridge2: NO-VPN
+#   devices:
+#     - mac: "54:AE:BC:9C:DE:BF"
+#       policy: NO-VPN
