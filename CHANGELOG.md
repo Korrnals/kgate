@@ -175,6 +175,20 @@ Field vol.3 correction — revert of the v1.6.7 autoup check.
   (~60-90s during a deploy) is documented as accepted — OFF outside a
   deploy stays fully sticky.
 
+## [1.6.9] - 2026-11-11
+
+ROOT-CAUSE fix for the intermittent tunnel breakage reported all day
+(ECONNRESET / connect timeouts through the VPN).
+
+### Fixed
+- **Tunnel endpoint pins were being poisoned.** The daemon resolved the
+  tunnel front domain via plain UDP DNS; a prime ТСПУ target — poisoned
+  answers returned bogus IPs that the daemon pinned as tunnel endpoints,
+  sending traffic into a blackhole until the DNS answer flipped back.
+  Endpoint resolution now goes over DNS-over-TCP (injection-proof), and
+  the deploy script's DNS pin (77.88.8.8, anti-ТСПУ) is no longer removed
+  by the pin reconciler.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
