@@ -152,6 +152,16 @@ Field correction of the v1.6.5 default-policy change (vol.2).
   down, after which autoup skipped raising. Deployments now stamp a
   deploy marker; the supervisor holds adoption for 3 minutes.
 
+## [1.6.7] - 2026-11-11
+
+Field vol.3: honor an OFF click that lands during a deploy.
+
+### Fixed
+- Toggling the tunnel OFF while a deploy was in flight no longer loses
+  the click: autoup re-checks the Proxy0 admin state (running-config)
+  right before raising — an operator OFF sets config `down` and holds
+  (verified live), so autoup adopts intent=down and skips the raise.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
