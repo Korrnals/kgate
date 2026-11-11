@@ -117,6 +117,23 @@ Owner-remark refinement of the v1.6.3 policy labels (CR-041 wave).
   explanation»: «Туннель - весь трафик идет через VPN» / «Напрямую - весь
   трафик идет через провайдера, минуя VPN».
 
+## [1.6.5] - 2026-11-11
+
+Owner-acceptance wave: the dashboard switch and the honest default.
+
+### Changed
+- **The KeeneticOS dashboard switch now works.** Toggling the HYST VPN
+  connection off in Системный монитор (or via ndmc) is adopted as operator
+  intent — the tunnel stays off; toggling it back on adopts intent=up.
+  Flap self-heal now covers ONLY real engine crashes (sing-box process
+  dead); daemon-initiated toggles hold a 30s grace window so adoption
+  never races a toggle in flight.
+- **The default policy is provider-only.** Proxy0 is removed from the
+  global priority chain entirely (no ip global): unbound traffic = ISP
+  always, no VPN failover in the default chain. VPN is reachable
+  exclusively via explicit device/segment binds (policy tables carry
+  their own default route via Proxy0).
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
