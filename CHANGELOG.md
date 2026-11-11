@@ -189,6 +189,19 @@ ROOT-CAUSE fix for the intermittent tunnel breakage reported all day
   the deploy script's DNS pin (77.88.8.8, anti-ТСПУ) is no longer removed
   by the pin reconciler.
 
+## [1.7.0] - 2026-11-11
+
+Sing-box runtime upgrade (owner directive: fresh version).
+
+### Changed
+- **Bundled sing-box 1.11.15 → 1.14.4** (fresh upstream). The generated
+  config migrates to the 1.12+ format: typed DNS servers, explicit
+  default domain resolver (the tunnel server is a domain), sniff moved
+  from the inbound to a route action. install.sh checksum pins
+  recomputed from the actual v1.14.4 tarballs.
+- Validated: `sing-box check` PASS on the migrated template with real
+  rulesets; field-verified on the router after deploy.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
