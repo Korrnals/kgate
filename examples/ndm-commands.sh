@@ -63,12 +63,12 @@ ndmc -c "ip policy VPN"
 # описание видно в веб-морде KeeneticOS (дропдаун «Политика по умолчанию») —
 # короткий человеческий ярлык, а не CLI-подсказка (замечание владельца,
 # 2026-11-11: «букв много, понятийность ниже» — вернули «Туннель»/«Напрямую»)
-ndmc -c "ip policy VPN description \"Туннель\""
+ndmc -c "ip policy VPN description \"Туннель - весь трафик идет через VPN\""
 ndmc -c "ip policy VPN permit global Proxy0"
 ndmc -c "ip policy VPN no permit global ISP"
 
 ndmc -c "ip policy NO-VPN"
-ndmc -c "ip policy NO-VPN description \"Напрямую\""
+ndmc -c "ip policy NO-VPN description \"Напрямую - весь трафик идет через провайдера, минуя VPN\""
 ndmc -c "ip policy NO-VPN permit global ISP"
 ndmc -c "ip policy NO-VPN no permit global Proxy0"
 
