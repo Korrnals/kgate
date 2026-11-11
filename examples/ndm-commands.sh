@@ -60,12 +60,15 @@ ndmc -c "no ip route 0.0.0.0/0 Proxy0"
 # NO-VPN (напрямую): permit ISP + запрет Proxy0 — привязанное устройство
 #                    напрямую, даже если владелец позже вернёт дефолт-туннель.
 ndmc -c "ip policy VPN"
-ndmc -c "ip policy VPN description \"policy-v2: через туннель (Proxy0). Привязка: kgate policy set device MAC VPN\""
+# описание видно в веб-морде KeeneticOS (дропдаун «Политика по умолчанию») —
+# короткий человеческий ярлык, а не CLI-подсказка (замечание владельца,
+# 2026-11-11: «букв много, понятийность ниже» — вернули «Туннель»/«Напрямую»)
+ndmc -c "ip policy VPN description \"Туннель\""
 ndmc -c "ip policy VPN permit global Proxy0"
 ndmc -c "ip policy VPN no permit global ISP"
 
 ndmc -c "ip policy NO-VPN"
-ndmc -c "ip policy NO-VPN description \"policy-v2: напрямую (ISP). Привязка: kgate policy set device MAC NO-VPN\""
+ndmc -c "ip policy NO-VPN description \"Напрямую\""
 ndmc -c "ip policy NO-VPN permit global ISP"
 ndmc -c "ip policy NO-VPN no permit global Proxy0"
 
