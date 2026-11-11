@@ -134,6 +134,24 @@ Owner-acceptance wave: the dashboard switch and the honest default.
   exclusively via explicit device/segment binds (policy tables carry
   their own default route via Proxy0).
 
+## [1.6.6] - 2026-11-11
+
+Field correction of the v1.6.5 default-policy change (vol.2).
+
+### Fixed
+- **HYST VPN is back in Системный монитор and «Приоритеты подключений».**
+  v1.6.5 removed Proxy0 from the global priority chain entirely — but
+  `ip global` membership is what makes an interface exist for KeeneticOS
+  management (dashboard, priorities, policy bindings). It is restored at
+  priority 1200, BELOW the provider (700): the default policy remains
+  provider-only, Proxy0 acts as standby (failover only when the ISP is
+  down) and as the bind target for the VPN policy.
+- **The tunnel no longer sticks OFF after a deploy.** The supervisor's
+  web-switch adoption raced the deploy engine-restart window (Proxy0 is
+  legitimately down while sing-box is alive) and could flip intent to
+  down, after which autoup skipped raising. Deployments now stamp a
+  deploy marker; the supervisor holds adoption for 3 minutes.
+
 ## [Unreleased]
 
 ## [1.5.0] - 2026-11-09
