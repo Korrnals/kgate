@@ -100,3 +100,36 @@ func TestLoadWithoutPoliciesSection(t *testing.T) {
 		t.Fatalf("пустая декларация отклонена: %v", err)
 	}
 }
+
+// panel-секция веб-панели (v1.9.0): парсинг + дефолты + env.
+func TestLoadPanelSection(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "kgate.yaml")
+	if err := os.WriteFile(f, []byte("panel:\n  password: secret\n  port: 9444\n  return_url: http://10.0.0.1/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Panel.Password != "secret" || c.Panel.Port != 9444 || c.Panel.ReturnURL != "http://10.0.0.1/" {
+		t.Fatalf("panel = %+v", c.Panel)
+	}
+	// пустая секция/нет секции: панель off, но дефолты на месте
+	c2, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.Panel.Password != "" || c2.Panel.Port != 8443 || c2.Panel.ReturnURL != "http://192.168.1.1/" {
+		t.Fatalf("panel defaults = %+v", c2.Panel)
+	}
+	// env перекрывает yaml
+	t.Setenv("KGATE_PANEL_PORT", "9000")
+	t.Setenv("KGATE_PANEL_PASSWORD", "env-pw")
+	c3, err := Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c3.Panel.Port != 9000 || c3.Panel.Password != "env-pw" {
+		t.Fatalf("panel env = %+v", c3.Panel)
+	}
+}

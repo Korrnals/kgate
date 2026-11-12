@@ -76,6 +76,7 @@
 ## 👉 См. также
 
 - [operations.md](operations.md) — диагностика и типовые неисправности
+- [panel.md](panel.md) — встроенная веб-панель (:8443, пароль, PWA)
 - [architecture/data-model.md](../architecture/data-model.md) — полная модель конфига и payload
 - [api/authentication.md](../api/authentication.md) — сертификаты в действии
 
@@ -92,6 +93,7 @@
 | `KGATE_SSH_PORT` / `KGATE_SSH_USER` / `KGATE_SSH_KEY` | ssh_* |
 | `KGATE_API_PORT` | api.port |
 | `KGATE_API_CA` / `KGATE_API_CERT` / `KGATE_API_KEY` | пути сертификатов клиента |
+| `KGATE_PANEL_PASSWORD` / `KGATE_PANEL_PORT` / `KGATE_PANEL_RETURN_URL` | panel.* (веб-панель) |
 | `KGATE_DAEMON_SINGBOX_BIN` / `_SINGBOX_CONFIG` / `_SINGBOX_LOG` | пути движка |
 | `KGATE_DAEMON_RELAY_LISTEN` / `_RELAY_UPSTREAM` | socks-relay |
 | `KGATE_DAEMON_API_LISTEN` | адрес mTLS API |

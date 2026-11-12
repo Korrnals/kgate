@@ -796,6 +796,18 @@ func (d *Daemon) Run() error {
 	}
 	logger("supervisor: dns-rules применены")
 
+	// Веб-панель: тот же процесс, только TLS-листенер (никаких дочерних
+	// процессов/pty). Включена ТОЛЬКО при заданном panel.password — fail-safe.
+	if d.cfg.Panel.Password == "" {
+		logger("panel: выключен (panel.password не задан)")
+	} else {
+		go func() {
+			if err := d.servePanel(logger); err != nil {
+				logger("panel: ОШИБКА " + err.Error())
+			}
+		}()
+	}
+
 	go func() { // tunnel auto-raise: wait for :1080, then up (no Entware race)
 		if !d.cfg.Daemon.BootAutoup {
 			return

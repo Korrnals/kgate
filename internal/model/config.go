@@ -39,6 +39,14 @@ type Config struct {
 		Key  string `yaml:"key"`
 	} `yaml:"api"`
 
+	Panel struct {
+		// Панель включена ТОЛЬКО если задан password (пусто/нет секции = off,
+		// одна строка в логе старта — fail-safe).
+		Password  string `yaml:"password"`
+		Port      int    `yaml:"port"`
+		ReturnURL string `yaml:"return_url"` // href кнопки «← Приложения»
+	} `yaml:"panel"`
+
 	Daemon struct {
 		SingBoxBin    string `yaml:"singbox_bin"`
 		SingBoxConfig string `yaml:"singbox_config"`
@@ -112,6 +120,12 @@ func (c *Config) fillDefaults() {
 	}
 	if c.API.Port == 0 {
 		c.API.Port = 9443
+	}
+	if c.Panel.Port == 0 {
+		c.Panel.Port = 8443
+	}
+	if c.Panel.ReturnURL == "" {
+		c.Panel.ReturnURL = "http://192.168.1.1/"
 	}
 	home := os.Getenv("HOME") + "/.kgate"
 	if c.API.CA == "" {
@@ -242,6 +256,10 @@ func applyEnv(c *Config) {
 	envStr("KGATE_API_CA", &c.API.CA)
 	envStr("KGATE_API_CERT", &c.API.Cert)
 	envStr("KGATE_API_KEY", &c.API.Key)
+
+	envStr("KGATE_PANEL_PASSWORD", &c.Panel.Password)
+	envInt("KGATE_PANEL_PORT", &c.Panel.Port)
+	envStr("KGATE_PANEL_RETURN_URL", &c.Panel.ReturnURL)
 
 	envStr("KGATE_DAEMON_SINGBOX_BIN", &c.Daemon.SingBoxBin)
 	envStr("KGATE_DAEMON_SINGBOX_CONFIG", &c.Daemon.SingBoxConfig)

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>kgate — панель</title>
+<style>
+:root{--bg:#0f1115;--card:#181b21;--card2:#1e222a;--fg:#e8eaf0;--dim:#8b90a0;--acc:#4f8cff;--ok:#3fb96a;--bad:#e05656;--warn:#e0a832;border:0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,sans-serif;padding-bottom:2rem}
+header{display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;background:var(--card);border-bottom:1px solid #2a2e38;position:sticky;top:0;z-index:5}
+header img{width:28px;height:28px}
+header h1{font-size:1.05rem;font-weight:600;flex:1}
+.back{color:var(--acc);text-decoration:none;font-size:.9rem;white-space:nowrap}
+nav{display:flex;background:var(--card);border-bottom:1px solid #2a2e38}
+nav button{flex:1;background:none;border:0;color:var(--dim);padding:.7rem 0;font-size:.95rem;border-bottom:2px solid transparent;cursor:pointer}
+nav button.on{color:var(--fg);border-bottom-color:var(--acc)}
+main{padding:1rem;max-width:640px;margin:0 auto}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.card{background:var(--card);border-radius:10px;padding:.8rem}
+.card .k{color:var(--dim);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+.card .v{font-size:1.15rem;margin-top:.2rem;word-break:break-all}
+.v.ok{color:var(--ok)}.v.bad{color:var(--bad)}
+.switch{margin:1.4rem 0 .6rem;text-align:center}
+.switch button{width:100%;max-width:420px;padding:1.3rem;font-size:1.25rem;font-weight:700;border:0;border-radius:14px;cursor:pointer;color:#fff}
+.switch .on-btn{background:var(--bad)} /* работает → нажатие выключит */
+.switch .off-btn{background:var(--ok)}
+.switch .note{color:var(--dim);font-size:.85rem;margin-top:.5rem}
+.list{background:var(--card);border-radius:10px;overflow:hidden}
+.row{display:flex;align-items:center;gap:.7rem;padding:.7rem .9rem;border-bottom:1px solid #242834;flex-wrap:wrap}
+.row:last-child{border-bottom:0}
+.row .name{font-weight:600}
+.row .sub{color:var(--dim);font-size:.82rem;flex:1;min-width:120px}
+.row select{background:var(--card2);color:var(--fg);border:1px solid #333a48;border-radius:8px;padding:.4rem .5rem;font-size:.9rem}
+.pill{font-size:.75rem;padding:.15rem .55rem;border-radius:99px;background:var(--card2);color:var(--dim)}
+.pill.vpn{color:var(--ok)}.pill.novpn{color:var(--warn)}
+.tabs2{display:flex;gap:.4rem;margin-bottom:.7rem}
+.tabs2 button{background:var(--card);color:var(--dim);border:1px solid #2a2e38;border-radius:8px;padding:.45rem 1rem;cursor:pointer}
+.tabs2 button.on{color:var(--fg);border-color:var(--acc)}
+pre{background:#0b0d11;border:1px solid #242834;border-radius:10px;padding:.8rem;font-size:.75rem;line-height:1.5;overflow:auto;max-height:60vh;white-space:pre-wrap;word-break:break-all}
+.dl{display:inline-block;margin-top:.7rem;color:var(--acc);font-size:.9rem;text-decoration:none}
+#toast{position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%);background:var(--card2);border:1px solid #333a48;color:var(--fg);padding:.6rem 1.1rem;border-radius:10px;font-size:.9rem;opacity:0;transition:.25s;pointer-events:none;max-width:88vw}
+#toast.show{opacity:1}
+#toast.err{border-color:var(--bad);color:var(--bad)}
+.login{max-width:340px;margin:18vh auto 0;padding:1.4rem;background:var(--card);border-radius:12px;text-align:center}
+.login img{width:52px;height:52px;margin-bottom:.6rem}
+.login input{width:100%;padding:.8rem;margin:.8rem 0;background:var(--card2);border:1px solid #333a48;border-radius:10px;color:var(--fg);font-size:1rem}
+.login button{width:100%;padding:.8rem;border:0;border-radius:10px;background:var(--acc);color:#fff;font-size:1rem;cursor:pointer}
+.login .err{color:var(--bad);font-size:.88rem;min-height:1.2em}
+h2{font-size:1rem;color:var(--dim);font-weight:600;margin:1.2rem 0 .6rem}
+</style>
+</head>
+<body>
+<header>
+  <img src="icon.svg" alt="">
+  <h1>kgate</h1>
+  <a class="back" id="back" href="/">← Приложения</a>
+</header>
+<div id="app">
+  <nav>
+    <button data-tab="status" class="on">Статус</button>
+    <button data-tab="policies">Политики</button>
+    <button data-tab="logs">Логи</button>
+  </nav>
+  <main>
+    <section id="tab-status">
+      <div class="cards" id="cards"></div>
+      <div class="switch">
+        <button id="tbtn" class="on-btn">VPN: ВКЛ — выключить?</button>
+        <div class="note">Нажатие переключает Proxy0 (как штатный тумблер kgate)</div>
+      </div>
+    </section>
+    <section id="tab-policies" hidden>
+      <h2>Сегменты (только просмотр)</h2>
+      <div class="list" id="segments"></div>
+      <h2>Устройства</h2>
+      <div class="list" id="hosts"></div>
+    </section>
+    <section id="tab-logs" hidden>
+      <div class="tabs2">
+        <button data-src="kgate" class="on">kgate</button>
+        <button data-src="singbox">sing-box</button>
+      </div>
+      <pre id="logpre">…</pre>
+      <a class="dl" id="dl" href="#" download>⬇ скачать хвост</a>
+    </section>
+  </main>
+</div>
+<div id="app-login" hidden>
+  <form class="login" onsubmit="return doLogin(event)">
+    <img src="icon.svg" alt="">
+    <div>kgate — панель управления</div>
+    <input type="password" id="pw" placeholder="Пароль панели" autofocus>
+    <div class="err" id="lerr"></div>
+    <button type="submit">Войти</button>
+  </form>
+</div>
+<div id="toast"></div>
+<script>
+'use strict';
+var $=function(s){return document.querySelector(s)};
+function toast(msg,err){var t=$('#toast');t.textContent=msg;t.className='show'+(err?' err':'');clearTimeout(t._h);t._h=setTimeout(function(){t.className=''},2600)}
+function jf(url,opt){return fetch(url,opt).then(function(r){if(r.status===401){showLogin();throw new Error('требуется вход')}if(!r.ok)return r.text().then(function(t){throw new Error(r.status+': '+t.slice(0,200))});var ct=r.headers.get('Content-Type')||'';return ct.indexOf('json')>=0?r.json():r.text()})}
+
+// ---- login ----
+function showLogin(){$('#app').hidden=true;$('#app-login').hidden=false}
+function doLogin(e){e.preventDefault();$('#lerr').textContent='';
+ fetch('login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'password='+encodeURIComponent($('#pw').value),redirect:'manual'})
+ .then(function(r){if(r.status===303||r.ok||r.type==='opaqueredirect'&&r.status===0){location.reload()}else if(r.status===429){$('#lerr').textContent='Слишком много попыток — подожди минуту'}else{return r.text().then(function(t){$('#lerr').textContent=t||'Неверный пароль'})}})
+ .catch(function(x){$('#lerr').textContent=x.message});return false}
+
+// ---- tabs ----
+var tab='status',logSrc='kgate',logTimer=null,exitIp='—';
+document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){
+ tab=b.dataset.tab;document.querySelectorAll('nav button').forEach(function(x){x.className=x===b?'on':''});
+ ['status','policies','logs'].forEach(function(t){$('#tab-'+t).hidden=t!==tab});
+ if(tab==='logs'){loadLogs();startLogAuto()}else{stopLogAuto()}
+ if(tab==='policies')loadPolicies();
+}});
+
+// ---- status ----
+function statusCards(s){
+ var c=function(k,v,cls){return '<div class="card"><div class="k">'+k+'</div><div class="v '+(cls||'')+'">'+v+'</div></div>'};
+ $('#cards').innerHTML=
+  c('sing-box',s.singbox,s.singbox==='running'?'ok':'bad')+
+  c('relay',s.relay,s.relay==='running'?'ok':'bad')+
+  c('Proxy0',s.proxy0,/up/.test(s.proxy0)?'ok':'bad')+
+  c('режим',s.mode)+
+  c('uptime',s.uptime)+
+  c('exit IP',exitIp);
+}
+function loadStatus(){jf('api/status').then(function(s){exitIp=s.exit_ip||'—';statusCards(s);
+ var up=/up/.test(s.proxy0),b=$('#tbtn');b.className=up?'on-btn':'off-btn';
+ b.textContent=up?'VPN: ВКЛ — выключить?':'VPN: ВЫКЛ — включить?';
+ }).catch(function(x){if($('#app').hidden)return;toast(x.message,true)})}
+$('#tbtn').onclick=function(){
+ var up=$('#tbtn').className==='on-btn';
+ if(!confirm(up?'Выключить VPN (Proxy0 down)?':'Включить VPN (Proxy0 up)?'))return;
+ $('#tbtn').disabled=true;
+ jf('api/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:!up})})
+ .then(function(r){toast('Proxy0: '+(r.proxy0||'?'));loadStatus()})
+ .catch(function(x){toast(x.message,true)})
+ .finally(function(){$('#tbtn').disabled=false});
+};
+
+// ---- policies ----
+function pill(p){if(!p)return '<span class="pill">напрямую</span>';
+ return '<span class="pill '+(p==='VPN'?'vpn':'novpn')+'">'+p+'</span>'}
+function loadPolicies(){jf('api/policies').then(function(d){
+ $('#segments').innerHTML=(d.segments||[]).map(function(s){
+  return '<div class="row"><span class="name">'+esc(s.name)+'</span><span class="sub">'+esc(s.description)+' · '+(s.hosts||0)+' устр.</span>'+pill(s.policy)+'</div>'
+ }).join('')||'<div class="row"><span class="sub">нет данных</span></div>';
+ $('#hosts').innerHTML=(d.hosts||[]).map(function(h){
+  var cur=h.policy==='VPN'?'VPN':h.policy==='NO-VPN'?'NO-VPN':'none';
+  return '<div class="row"><span class="name">'+esc(h.hostname||h.mac)+'</span>'+
+   '<span class="sub">'+esc(h.ip||'')+'</span>'+
+   '<select data-mac="'+esc(h.mac)+'">'+
+   ['VPN','NO-VPN','none'].map(function(p){return '<option '+(p===cur?'selected':'')+'>'+p+'</option>'}).join('')+
+   '</select></div>'
+ }).join('')||'<div class="row"><span class="sub">нет устройств</span></div>';
+ document.querySelectorAll('#hosts select').forEach(function(sel){
+  sel.onchange=function(){
+   sel.disabled=true;
+   jf('api/policy/device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac:sel.dataset.mac,policy:sel.value})})
+   .then(function(){toast('Привязано: '+sel.value);loadPolicies()})
+   .catch(function(x){toast(x.message,true);loadPolicies()});
+  };
+ });
+}).catch(function(x){toast(x.message,true)})}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+// ---- logs ----
+function loadLogs(){jf('api/logs?src='+logSrc+'&tail=200').then(function(t){$('#logpre').textContent=t;
+ $('#dl').href='api/logs?src='+logSrc+'&tail=2000&download=1';
+}).catch(function(x){$('#logpre').textContent='— '+x.message})}
+function startLogAuto(){stopLogAuto();logTimer=setInterval(function(){if(tab==='logs'&&!document.hidden)loadLogs()},5000)}
+function stopLogAuto(){if(logTimer){clearInterval(logTimer);logTimer=null}}
+document.querySelectorAll('.tabs2 button').forEach(function(b){b.onclick=function(){
+ logSrc=b.dataset.src;document.querySelectorAll('.tabs2 button').forEach(function(x){x.className=x===b?'on':''});loadLogs()}});
+
+// ---- boot ----
+fetch('api/status').then(function(r){if(r.status===401){showLogin();throw 0}return r}).then(function(){loadStatus();loadPolicies()}).catch(function(){});
+</script>
+</body>
+</html>
