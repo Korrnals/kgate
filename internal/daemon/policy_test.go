@@ -97,7 +97,7 @@ func TestPolicySetDevice_ByHostname_BindsVPN(t *testing.T) {
 
 func TestPolicySetDevice_None_UnbindAttrForm(t *testing.T) {
 	d, fake := policyTestDaemon(t)
-	// design ground truth: unbind is the attribute form, NOT `no policy <NAME>`.
+	// truth table 08.11 (live router): unbind is the prefix no-form, NOT `no ... policy <NAME>`.
 	// pixel-phone is bound (VPN) in the fixture — unbinding smart-tv would now
 	// hit the idempotent path (wave-1 C6) and write nothing.
 	if _, err := d.policySetDevice("5c:eb:f6:aa:bb:01", "none"); err != nil {
@@ -106,7 +106,7 @@ func TestPolicySetDevice_None_UnbindAttrForm(t *testing.T) {
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
 		"show running-config",
-		"ip hotspot host 5c:eb:f6:aa:bb:01 no policy",
+		"no ip hotspot host 5c:eb:f6:aa:bb:01 policy",
 		"system configuration save",
 	}, "unbind")
 }
@@ -159,15 +159,15 @@ func TestPolicySetSegment_ByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set segment: %v", err)
 	}
-	if out["ndmc"] != "ip hotspot Bridge0 policy NO-VPN" {
+	if out["ndmc"] != "ip hotspot policy Bridge0 NO-VPN" {
 		t.Errorf("ndmc = %v", out["ndmc"])
 	}
 	if _, err := d.policySetSegment("bridge1", "VPN"); err != nil { // by token
 		t.Fatalf("unbind segment: %v", err)
 	}
 	assertCmds(t, fake, []string{
-		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot Bridge0 policy NO-VPN", "system configuration save",
-		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot Bridge1 policy VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Bridge0 NO-VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Bridge1 VPN", "system configuration save",
 	}, "segment")
 }
 
@@ -203,7 +203,7 @@ func TestPolicyAllDirect_UnbindsAllBound(t *testing.T) {
 	assertCmds(t, fake, []string{
 		"show ip hotspot",
 		"show running-config",
-		"ip hotspot host 5c:eb:f6:aa:bb:01 no policy",
+		"no ip hotspot host 5c:eb:f6:aa:bb:01 policy",
 		"system configuration save",
 	}, "all-direct")
 }

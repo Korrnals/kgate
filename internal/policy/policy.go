@@ -222,7 +222,7 @@ func ParsePolicies(out string) []string {
 // lines count (the bare `policy Bridge1 permit` segment lines do not match).
 func ParseHotspotBindings(runCfg string) map[string]string {
 	out := map[string]string{}
-	for _, raw := range strings.Split(runCfg, "\n") {
+	for _, raw := range strings.Split(StripANSI(runCfg), "\n") {
 		line := strings.TrimSpace(raw)
 		if m := hotspotBindingRE.FindStringSubmatch(line); m != nil {
 			out[strings.ToLower(m[1])] = m[2]
@@ -232,6 +232,18 @@ func ParseHotspotBindings(runCfg string) map[string]string {
 }
 
 var hotspotBindingRE = regexp.MustCompile(`(?i)^host\s+([0-9a-f:]{17})\s+policy\s+([A-Za-z0-9_-]+)$`)
+
+// ansiRE strips terminal escape sequences from ndmc output: on a live
+// Keenetic every line can carry a `\x1b[K` (erase-to-EOL) prefix, which
+// otherwise blinds both config parsers and makes the plan re-apply verbs on
+// an already-converged state. Covers full CSI forms (`\x1b[0m`, `\x1b[2J`, …).
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+// StripANSI removes ANSI escape sequences — run it before any parsing of
+// ndmc show-output (truth table 08.11, field probe on 192.168.1.1).
+func StripANSI(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
+}
 
 // ResolveHost matches target (MAC or hostname, case-insensitive) against the
 // parsed table. Ambiguous hostname matches are an error (MAC is the unambiguous

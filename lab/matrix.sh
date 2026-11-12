@@ -104,6 +104,7 @@ stub "show ip hotspot"                            "stub: show ip hotspot -> Phas
 stub "show ip policy"                             "stub: show ip policy -> Phase 2 error"
 stub "ip policy VPN"                              "stub: ip policy VPN -> Phase 2 error"
 stub "ip hotspot host aa:bb:cc:dd:ee:ff policy VPN" "stub: ip hotspot host .. policy -> Phase 2 error"
+stub "ip hotspot policy Bridge0 NO-VPN" "stub: ip hotspot policy .. -> Phase 2 error"
 
 # 18: destroy-поверхность политик остаётся рабочей (Phase 1)
 G=$(ndmc -c "no ip policy VPN-TV" 2>&1); rc=$?

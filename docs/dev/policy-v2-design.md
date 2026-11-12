@@ -14,17 +14,26 @@ STATUS: approved (owner, 09.11). Implements in kgate 1.5.0.
    plus a custom shortcut to switch EVERYTHING to VPN and back.
 4. OpenWrt lab: container-based test environment (no hardware needed).
 
-## ndm ground truth (verified live 09.11)
+## ndm ground truth (verified live 08.11 + 09.11, field probe on 192.168.1.1)
 
 - Live binding table: `ndmc -c "show ip hotspot"` — per-host entries with
-  `hostname/mac/ip/policy/active`. This is the SOURCE OF TRUTH for bindings
-  (running-config's `ip hotspot` block does NOT reflect host binds).
-- Host bind: `ip hotspot host <MAC> policy <NAME>`; unbind: `ip hotspot host
-  <MAC> no policy` (NOT `no ... policy <NAME>` — that is a parse error).
-- Segment bind: `ip hotspot <segment> policy <NAME>` where segment = the
-  hotspot access point / bridge name as ndm knows it (Bridge0="Home",
-  Bridge1="LAN", Bridge2="SMART" on the Ultra; enumerate via
+  `hostname/mac/ip/policy/active`.
+- Host bind: `ip hotspot host <MAC> policy <NAME>`; unbind: `no ip hotspot
+  host <MAC> policy` (truth table 08.11). Both suffix forms — `ip hotspot
+  host <MAC> no policy` AND `no ip hotspot host <MAC> policy <NAME>` — are
+  argument parse errors [7405602].
+- Segment bind: `ip hotspot policy <segment> <NAME>`; unbind: `no ip hotspot
+  policy <segment>` ("Interface X policy cleared"). The arg-order form
+  `ip hotspot <segment> policy <NAME>` is "no such command" [7405600] and
+  the valued no-form `no ip hotspot policy <segment> <NAME>` is a parse
+  error [7405602] — both silently swallowed under `2>/dev/null`.
+- Segment = the hotspot access point / bridge name as ndm knows it
+  (Bridge0="Home", Bridge1="LAN", Bridge2="SMART" on the Ultra; enumerate via
   `show ip hotspot` interface blocks).
+- ANSI noise: ndmc output carries `\x1b[K` prefixes on lines — strip before
+  parsing (`kgate/internal/policy.StripANSI`).
+- Exit codes are NOT trustworthy in a tty: invalid verbs return rc=0 and
+  fail only verbally (`error[...]`, "system failed") — check the text.
 - Policy object: `ip policy <NAME>` + routes. An escape policy (direct) =
   `permit global ISP` + `no permit global Proxy0`. A tunnel policy =
   `permit global Proxy0` (+ `no permit global ISP`).

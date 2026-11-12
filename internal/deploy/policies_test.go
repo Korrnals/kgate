@@ -77,7 +77,7 @@ func TestPolicyPlanSegmentDelta(t *testing.T) {
 	want.Segments["Bridge1"] = "NO-VPN"
 	plan := PolicyPlan(fixtureRunCfg, fixturePolicies, want)
 	cmds := verbsCmds(plan)
-	if len(cmds) != 1 || cmds[0] != "ip hotspot Bridge1 policy NO-VPN" {
+	if len(cmds) != 1 || cmds[0] != "ip hotspot policy Bridge1 NO-VPN" {
 		t.Fatalf("ожидался единственный верб для Bridge1, получили: %v", cmds)
 	}
 }
@@ -87,7 +87,7 @@ func TestPolicyPlanSegmentOverride(t *testing.T) {
 	want := declarated()
 	want.Segments["Bridge2"] = "VPN"
 	plan := PolicyPlan(fixtureRunCfg, fixturePolicies, want)
-	if cmds := verbsCmds(plan); len(cmds) != 1 || cmds[0] != "ip hotspot Bridge2 policy VPN" {
+	if cmds := verbsCmds(plan); len(cmds) != 1 || cmds[0] != "ip hotspot policy Bridge2 VPN" {
 		t.Fatalf("ожидался override-верб Bridge2→VPN, получили: %v", cmds)
 	}
 }
@@ -102,8 +102,8 @@ func TestPolicyPlanCreatesMissingPolicies(t *testing.T) {
 		"ip policy NO-VPN",
 		"ip policy VPN permit global Proxy0",
 		"ip policy NO-VPN permit global ISP",
-		"ip hotspot Home policy VPN",
-		"ip hotspot Bridge2 policy NO-VPN",
+		"ip hotspot policy Home VPN",
+		"ip hotspot policy Bridge2 NO-VPN",
 		"ip hotspot host 54:ae:bc:9c:de:bf policy NO-VPN",
 	} {
 		if !containsCmd(cmds, want) {
@@ -160,9 +160,9 @@ func TestSplitShows(t *testing.T) {
 func TestPoliciesUnbindScript(t *testing.T) {
 	s := policiesUnbindScript(declarated())
 	for _, want := range []string{
-		"ndmc -c \"ip hotspot Bridge2 no policy\"",
-		"ndmc -c \"ip hotspot Home no policy\"",
-		"ndmc -c \"ip hotspot host 54:ae:bc:9c:de:bf no policy\"",
+		"ndmc -c \"no ip hotspot policy Bridge2\"",
+		"ndmc -c \"no ip hotspot policy Home\"",
+		"ndmc -c \"no ip hotspot host 54:ae:bc:9c:de:bf policy\"",
 	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("в скрипте нет %q; скрипт:\n%s", want, s)
@@ -212,5 +212,50 @@ func TestPoliciesValidate(t *testing.T) {
 func TestPolicyNameMapping(t *testing.T) {
 	if policy.PolicyVPN != "VPN" || policy.PolicyNoVPN != "NO-VPN" {
 		t.Fatalf("канонические имена политик изменились: %q / %q — обнови модель и доки", policy.PolicyVPN, policy.PolicyNoVPN)
+	}
+}
+
+// Truth table 08.11: `\x1b[K` prefixes must not blind splitShows/парсеры —
+// иначе план считает всё расходящимся и пере-применяет вербы + лишний save.
+func TestSplitShowsStripANSI(t *testing.T) {
+	out := "\x1b[Kip hotspot\x1b[K\n\x1b[K    policy Home VPN\x1b[K\n=== kgate-show-split ===\nname: VPN\n"
+	rc, pol, err := splitShows(out)
+	if err != nil {
+		t.Fatalf("splitShows: %v", err)
+	}
+	if got := segmentBindings(rc); got["Home"] != "VPN" {
+		t.Errorf("segmentBindings after ANSI strip: %v", got)
+	}
+	if pol != "\nname: VPN\n" {
+		t.Errorf("ipPolicy: %q", pol)
+	}
+}
+
+// Вербальная проверка apply-цикла: rc=0 + "error[7405600]" в выводе = FAIL
+// (ndmc в tty не возвращает ненулевой код на invalid-вербах).
+func TestNdmcVerbFailed(t *testing.T) {
+	for _, s := range []string{"error[7405600]: no such command: Bridge0", "system failed [7405602], arg parse"} {
+		if !ndmcVerbFailed(s) {
+			t.Errorf("ndmcVerbFailed(%q) = false", s)
+		}
+	}
+	if ndmcVerbFailed("Hotspot::Manager: Policy VPN applied to interface Home.") {
+		t.Error("успешный вывод матчится как отказ")
+	}
+}
+
+// Истинные формы unbind-вербов (truth table 08.11, live router).
+func TestPoliciesUnbindScriptTrueForms(t *testing.T) {
+	var p model.Policies
+	p.Segments = map[string]string{"Home": "VPN"}
+	p.Devices = []model.DevicePolicy{{MAC: "54:AE:BC:9C:DE:BF"}}
+	got := policiesUnbindScript(p)
+	for _, want := range []string{
+		`ndmc -c "no ip hotspot policy Home"`,
+		`ndmc -c "no ip hotspot host 54:ae:bc:9c:de:bf policy"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("unbind-скрипт без %q:\n%s", want, got)
+		}
 	}
 }

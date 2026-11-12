@@ -129,13 +129,13 @@ assert_migration() {
 	ck "миграция: host tv (VPN-TV -> NO-VPN)"          "$run1" "ip hotspot host aa:bb:cc:dd:ee:01 policy NO-VPN"
 	ck "миграция: host pc (DIRECT-NOVPN -> NO-VPN)"    "$run1" "ip hotspot host aa:bb:cc:dd:ee:02 policy NO-VPN"
 	ck "миграция: offline host (VPN-Laptops -> NO-VPN)" "$run1" "ip hotspot host aa:bb:cc:dd:ee:03 policy NO-VPN"
-	ck "миграция: segment Bridge2 (access point!)"     "$run1" "ip hotspot Bridge2 policy NO-VPN"
+	ck "миграция: segment Bridge2 (access point!)"     "$run1" "ip hotspot policy Bridge2 NO-VPN"
 	ck "миграция: delete VPN-TV"             "$run1" "no ip policy VPN-TV"
 	ck "миграция: delete VPN-Laptops-Phones" "$run1" "no ip policy VPN-Laptops-Phones"
 	ck "миграция: delete DIRECT-NOVPN"       "$run1" "no ip policy DIRECT-NOVPN"
 	ck "миграция: save после миграции"       "$run1" "system configuration save"
 	ck "дефолт: sensor (без привязки) НЕ тронут — привязок ровно 4" \
-		"$(printf '%s' "$run1" | grep -c 'ip hotspot .*policy NO-VPN$')" "4"
+		"$(printf '%s' "$run1" | grep -c 'policy NO-VPN$')" "4"
 	ck_not "дефолт: никаких привязок кроме миграционных" \
 		"$(printf '%s' "$run1" | grep '^ip hotspot' | grep -v 'policy NO-VPN')" "ip hotspot"
 	# идемпотентность второго прогона: миграция no-op

@@ -124,7 +124,7 @@ migrate_legacy_policies() {
 			if [ "$kind" = "host" ]; then
 				ndmc -c "ip hotspot host $id policy NO-VPN"
 			else
-				ndmc -c "ip hotspot $id policy NO-VPN"
+				ndmc -c "ip hotspot policy $id NO-VPN"  # truth table 08.11: `ip hotspot <seg> policy ..` = no such command
 			fi
 			repointed=$((repointed + 1))
 		done < "$tmp"

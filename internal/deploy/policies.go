@@ -36,6 +36,11 @@ type policyVerb struct {
 // второй токен — VPN|NO-VPN, что и есть наше управляемое множество.
 var segmentBindingRE = regexp.MustCompile(`(?m)^[ \t]*policy[ \t]+([^ \t]+)[ \t]+(VPN|NO-VPN)[ \t]*$`)
 
+// VERBAL-FAIL: живой ndmc в tty возвращает rc=0 даже на invalid-вербах —
+// отказ виден ТОЛЬКО вербально (truth table 08.11: "no such command" —
+// error[7405600], argument parse error — error[7405602], плюс "system
+// failed"). Применяется к выводу каждого верба apply-цикла.
+
 // policyObjectRE — наличие объекта политики в `show ip policy`
 // (те же формы, что у policy_exists в ndm-commands.sh).
 var policyObjectRE = func(name string) *regexp.Regexp {
@@ -102,7 +107,7 @@ func PolicyPlan(runCfg, ipPolicy string, want model.Policies) []policyVerb {
 		}
 		plan = append(plan, policyVerb{
 			label: fmt.Sprintf("сегмент %s → %s", seg, pol),
-			cmd:   fmt.Sprintf("ip hotspot %s policy %s", seg, pol),
+			cmd:   fmt.Sprintf("ip hotspot policy %s %s", seg, pol), // truth table 08.11
 		})
 	}
 	// 3. device-привязки (ParseHotspotBindings нормализует MAC в lower)
@@ -126,6 +131,9 @@ const showSeparator = "=== kgate-show-split ==="
 
 // splitShows режет вывод `rc; sep; pol` на running-config и show ip policy.
 func splitShows(out string) (runCfg, ipPolicy string, err error) {
+	// ANSI-муусор: ndmc рендерит \x1b[K-префиксы на строках — без strip оба
+	// парсера слепы и план считает ВСЁ расходящимся (пере-apply + лишний save).
+	out = policy.StripANSI(out)
 	i := strings.Index(out, showSeparator)
 	if i < 0 {
 		return "", "", fmt.Errorf("вывод ssh без маркера %q — транспорт или ndmc сломаны", showSeparator)
@@ -168,9 +176,10 @@ func (r *Runner) Policies() {
 	}
 	applied := 0
 	for _, v := range plan {
-		if _, err := r.ssh.run(`ndmc -c '` + v.cmd + `'`); err != nil {
+		out, err := r.ssh.run(`ndmc -c '` + v.cmd + `'`)
+		if err != nil || ndmcVerbFailed(out) {
 			r.failures++
-			fmt.Printf("  %s %s: %v\n", r.mark(false), v.label, err)
+			fmt.Printf("  %s %s: верб отклонён ndm (rc/verbal): %v %q\n", r.mark(false), v.label, err, strings.TrimSpace(out))
 			continue
 		}
 		applied++
@@ -183,6 +192,14 @@ func (r *Runner) Policies() {
 		r.failures++
 		fmt.Printf("  %s system configuration save — привязки НЕ зафиксированы (воскреснут при ребуте)\n", r.mark(false))
 	}
+}
+
+// ndmcVerbFailed — вербальная поверхность отказа: ndmc в tty отдаёт rc=0
+// даже на invalid-вербах, ошибка видна только текстом (error[...], "system
+// failed", "no such command"). Тот же паттерн, что ndmcSaveFailed.
+func ndmcVerbFailed(out string) bool {
+	o := strings.ToLower(out)
+	return strings.Contains(o, "error[") || strings.Contains(o, "system failed") || strings.Contains(o, "no such command")
 }
 
 // ndmcSaveFailed — ndmc-сбой может прийти и вербальной поверхностью
@@ -204,10 +221,10 @@ func policiesUnbindScript(p model.Policies) string {
 	}
 	sort.Strings(segs)
 	for _, seg := range segs {
-		fmt.Fprintf(&b, "ndmc -c \"ip hotspot %s no policy\"\n", seg)
+		fmt.Fprintf(&b, "ndmc -c \"no ip hotspot policy %s\"\n", seg) // truth table 08.11: prefix no-form, значение в no-вербе = parse error
 	}
 	for _, d := range p.Devices {
-		fmt.Fprintf(&b, "ndmc -c \"ip hotspot host %s no policy\"\n", strings.ToLower(strings.TrimSpace(d.MAC)))
+		fmt.Fprintf(&b, "ndmc -c \"no ip hotspot host %s policy\"\n", strings.ToLower(strings.TrimSpace(d.MAC)))
 	}
 	b.WriteString("echo \"declarative bindings unbound\"\n")
 	return b.String()

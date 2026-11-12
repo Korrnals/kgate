@@ -25,15 +25,16 @@ func checkToken(what, s string) error {
 }
 
 // BindDeviceCmd: `ip hotspot host <MAC> policy <NAME>`; name "" (or "none" is
-// resolved by the caller) → the unbind attribute form `ip hotspot host <MAC>
-// no policy` (design ground truth: `no ... policy <NAME>` is a parse error).
+// resolved by the caller) → the prefix no-form `no ip hotspot host <MAC>
+// policy` (truth table 08.11, live router: the suffix form `ip hotspot host
+// <MAC> no policy` is an argument parse error [7405602]).
 func BindDeviceCmd(mac, name string) (string, error) {
 	mac = strings.ToLower(strings.TrimSpace(mac))
 	if !ValidMAC(mac) {
 		return "", fmt.Errorf("mac: %q не похож на MAC (aa:bb:cc:dd:ee:ff)", mac)
 	}
 	if name == "" {
-		return "ip hotspot host " + mac + " no policy", nil
+		return "no ip hotspot host " + mac + " policy", nil
 	}
 	if err := checkName("policy", name); err != nil {
 		return "", err
@@ -41,19 +42,22 @@ func BindDeviceCmd(mac, name string) (string, error) {
 	return "ip hotspot host " + mac + " policy " + name, nil
 }
 
-// BindSegmentCmd: `ip hotspot <segment> policy <NAME>`; name "" → the unbind
-// attribute form `ip hotspot <segment> no policy`.
+// BindSegmentCmd: `ip hotspot policy <segment> <NAME>` (truth table 08.11,
+// live router: `ip hotspot <segment> policy <NAME>` is "no such command"
+// [7405600]); name "" → the prefix no-form `no ip hotspot policy <segment>`
+// ("Interface X policy cleared"; the value form `no ip hotspot policy <seg>
+// <NAME>` is a parse error [7405602]).
 func BindSegmentCmd(segment, name string) (string, error) {
 	if err := checkToken("segment", segment); err != nil {
 		return "", err
 	}
 	if name == "" {
-		return "ip hotspot " + segment + " no policy", nil
+		return "no ip hotspot policy " + segment, nil
 	}
 	if err := checkName("policy", name); err != nil {
 		return "", err
 	}
-	return "ip hotspot " + segment + " policy " + name, nil
+	return "ip hotspot policy " + segment + " " + name, nil
 }
 
 // CreatePolicyCmd: `ip policy <NAME>` — bare object, routes are added separately.

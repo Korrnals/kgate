@@ -106,6 +106,20 @@ policies:
 - После привязок выполняется `system configuration save` — состояние
   переживает reboot.
 
+Рабочие ndm-формы (таблица истинности 08.11, живой роутер — фикс 1.8.1):
+
+| Операция | Рабочий верб | НЕ работает |
+|---|---|---|
+| сегмент bind | `ip hotspot policy <SEG> <POL>` | `ip hotspot <SEG> policy <POL>` — «no such command» [7405600] |
+| сегмент unbind | `no ip hotspot policy <SEG>` | `no ip hotspot policy <SEG> <POL>` — argument parse error [7405602] |
+| host bind | `ip hotspot host <MAC> policy <NAME>` | — |
+| host unbind | `no ip hotspot host <MAC> policy` | `ip hotspot host <MAC> no policy` — parse error [7405602] |
+
+Ещё две ловушки живого ndmc: вывод несёт ANSI-префиксы `\x1b[K` (kgate
+strip'ит перед парсингом — иначе план считает всё расходящимся), а exit-коды
+в tty недоверительны — invalid-верб возвращается с rc=0 и вербальной ошибкой
+`error[...]`, которую kgate тоже проверяет.
+
 Императивный путь (`kgate policy set …`) остаётся рабочим; при следующем
 `kgate apply` конфиг вернёт декларированное состояние — держите секцию
 в актуальном виде.

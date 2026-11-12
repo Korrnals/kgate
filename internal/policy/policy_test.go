@@ -281,9 +281,9 @@ func TestBindDeviceCmd(t *testing.T) {
 	if err != nil || cmd != "ip hotspot host aa:bb:cc:dd:ee:ff policy VPN" {
 		t.Errorf("bind: (%q, %v)", cmd, err)
 	}
-	// design ground truth: unbind is the attribute form, NOT `no policy <NAME>`
+	// truth table 08.11 (live router): unbind is the prefix no-form, NOT `no ... policy <NAME>`
 	cmd, err = BindDeviceCmd("aa:bb:cc:dd:ee:ff", "")
-	if err != nil || cmd != "ip hotspot host aa:bb:cc:dd:ee:ff no policy" {
+	if err != nil || cmd != "no ip hotspot host aa:bb:cc:dd:ee:ff policy" {
 		t.Errorf("unbind: (%q, %v)", cmd, err)
 	}
 	if _, err = BindDeviceCmd("aa:bb:cc:dd:ee", "VPN"); err == nil {
@@ -296,11 +296,11 @@ func TestBindDeviceCmd(t *testing.T) {
 
 func TestBindSegmentCmd(t *testing.T) {
 	cmd, err := BindSegmentCmd("Bridge0", "NO-VPN")
-	if err != nil || cmd != "ip hotspot Bridge0 policy NO-VPN" {
+	if err != nil || cmd != "ip hotspot policy Bridge0 NO-VPN" {
 		t.Errorf("bind: (%q, %v)", cmd, err)
 	}
 	cmd, err = BindSegmentCmd("Bridge0", "")
-	if err != nil || cmd != "ip hotspot Bridge0 no policy" {
+	if err != nil || cmd != "no ip hotspot policy Bridge0" {
 		t.Errorf("unbind: (%q, %v)", cmd, err)
 	}
 	if _, err = BindSegmentCmd(`Bridge0; rm -rf /`, "VPN"); err == nil {
@@ -360,5 +360,27 @@ func TestParseHotspotBindings_RealRunningConfig(t *testing.T) {
 	}
 	if len(got) != 1 {
 		t.Errorf("unexpected extra bindings: %v", got)
+	}
+}
+
+// Truth table 08.11 (live router): ndmc carries `\x1b[K` prefixes on every
+// line — without stripping, hotspotBindingRE goes blind and the deploy plan
+// re-applies verbs on an already-converged state.
+func TestStripANSI(t *testing.T) {
+	in := "\x1b[K    host f4:e8:c7:c4:4f:a4 policy VPN\x1b[K"
+	if got := StripANSI(in); got != "    host f4:e8:c7:c4:4f:a4 policy VPN" {
+		t.Errorf("StripANSI: %q", got)
+	}
+	if got := StripANSI("\x1b[2J\x1b[0mplain"); got != "plain" {
+		t.Errorf("StripANSI CSI: %q", got)
+	}
+}
+
+// ANSI-prefixed running-config must parse into bindings exactly like clean text.
+func TestParseHotspotBindings_ANSIPrefixed(t *testing.T) {
+	cfg := "ip hotspot\n\x1b[K    policy Bridge2 NO-VPN\x1b[K\n\x1b[K    host f4:e8:c7:c4:4f:a4 policy VPN\x1b[K\n"
+	got := ParseHotspotBindings(cfg)
+	if len(got) != 1 || got["f4:e8:c7:c4:4f:a4"] != "VPN" {
+		t.Errorf("ANSI-prefixed parse: %v", got)
 	}
 }
