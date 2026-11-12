@@ -280,6 +280,27 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   migrate_legacy_policies исправлен; lab-ожидания и документация
   (admin/dev) переведены на истинные формы.
 
+## [1.9.0] - 2026-11-12
+
+### Added
+- **Built-in web panel served by the daemon** at
+  `https://<router>:8443/kgate` (enabled by setting `panel.password` in
+  `kgate.yaml`; empty password keeps the panel off). Password login with
+  per-IP rate limiting (5 fails/min), 12h session cookie
+  (HttpOnly, SameSite=Lax), Origin checks on mutations. TLS reuses the
+  existing daemon certificates; the listener lives in the same process —
+  no extra services or children.
+- **Panel features**: live status (engine, relay, Proxy0, exit IP),
+  the VPN toggle delegating to the exact code path of the mTLS API,
+  per-device access-policy switching (segments are shown read-only),
+  and tailed kgate/sing-box logs with auto-refresh and download.
+  Mobile-first dark UI in Russian, "Back to Applications" button
+  (`panel.return_url`), PWA manifest + icon so the panel installs as a
+  home-screen app on phones.
+- `panel` config section (`password`, `port` = 8443,
+  `return_url` = `http://192.168.1.1/`) with `KGATE_PANEL_*` env
+  overrides; docs: docs/admin/panel.md.
+
 ## [1.8.2] - 2026-11-12
 
 ### Fixed
