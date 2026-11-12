@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"kgate/internal/model"
 	"kgate/internal/policy"
@@ -42,9 +43,11 @@ var segmentBindingRE = regexp.MustCompile(`(?m)^[ \t]*policy[ \t]+([^ \t]+)[ \t]
 // failed"). Применяется к выводу каждого верба apply-цикла.
 
 // policyObjectRE — наличие объекта политики в `show ip policy`
-// (те же формы, что у policy_exists в ndm-commands.sh).
+// (табличный формат KeeneticOS 4.x: `policy, name = VPN, description = ...`).
+// Альтернативы name:/policy <name> — совместимость со старыми рендерами.
 var policyObjectRE = func(name string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)(^|[ \t])name:[ \t]*` + regexp.QuoteMeta(name) + `([ \t]|$)|(^|[ \t])policy[ \t]+` + regexp.QuoteMeta(name) + `([ \t]|$)`)
+	q := regexp.QuoteMeta(name)
+	return regexp.MustCompile(`(?m)(^|[ \t])policy,[ \t]*name[ \t]*=[ \t]*` + q + `([ \t]?,|$)|(^|[ \t])name:[ \t]*` + q + `([ \t]|$)|(^|[ \t])policy[ \t]+` + q + `([ \t]|$)`)
 }
 
 // segmentBindings парсит running-config в map(ndm-имя → политика).
@@ -157,16 +160,27 @@ func (r *Runner) Policies() {
 			r.mark(true), len(r.c.Policies.Segments), len(r.c.Policies.Devices))
 		return
 	}
-	out, err := r.ssh.run(`printf '%s\n' "` + showSeparator + `"; ndmc -c "show running-config"; ndmc -c "show ip policy"`)
-	if err != nil {
-		r.failures++
-		fmt.Printf("  %s чтение живого состояния (show running-config / show ip policy): %v\n", r.mark(false), err)
-		return
+	// чтение живого состояния: до 3 попыток с бэкоффом — после тяжёлых стадий
+	// (ndm-commands.sh = сотни ndmc-вызовов) роутер может кратко отдавать
+	// ПУСТОЙ вывод с nil-ошибкой ssh (полевой кейс 2026-11-12: len=0 при
+	// живом транспорте). Повтор идемпотентен, пауза даёт ndm выдохнуть.
+	var runCfg, ipPolicy string
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+		out, err := r.ssh.ptyRun(`ndmc -c "show running-config"; printf '%s\n' "` + showSeparator + `"; ndmc -c "show ip policy"`)
+		if err != nil {
+			continue
+		}
+		runCfg, ipPolicy, err = splitShows(out)
+		if err == nil {
+			break
+		}
 	}
-	runCfg, ipPolicy, err := splitShows(out)
-	if err != nil {
+	if runCfg == "" && ipPolicy == "" {
 		r.failures++
-		fmt.Printf("  %s %v\n", r.mark(false), err)
+		fmt.Printf("  %s чтение живого состояния (show running-config / show ip policy): не удалось за 2 попытки — транспорт или ndmc перегружены\n", r.mark(false))
 		return
 	}
 	plan := PolicyPlan(runCfg, ipPolicy, r.c.Policies)

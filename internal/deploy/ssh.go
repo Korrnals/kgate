@@ -173,7 +173,22 @@ func promptPassword(user, host string) (string, error) {
 
 // run executes a shell script and returns combined output; a dropped
 // connection is re-established once before giving up.
+// run выполняет скрипт БЕЗ PTY — ПРАВИЛО: pty-сессия становится controlling
+// terminal'ом запущенных демонов (S99kgate start → ssh close → SIGHUP убивает
+// движок и sing-box; полевой инцидент 2026-11-12). PTY нужен ТОЛЬКО чтениям
+// ndmc (ptyRun — усечённый non-tty вывод ndmc ломает парсинг) — и они не
+// должны стартовать демонов.
 func (s *sshRunner) run(script string) (string, error) {
+	return s.exec(script, false)
+}
+
+// ptyRun — как run, но с PTY: только для чтений состояния (show), никогда
+// для скриптов, поднимающих процессы.
+func (s *sshRunner) ptyRun(script string) (string, error) {
+	return s.exec(script, true)
+}
+
+func (s *sshRunner) exec(script string, pty bool) (string, error) {
 	var sess *ssh.Session
 	var runErr error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -190,6 +205,15 @@ func (s *sshRunner) run(script string) (string, error) {
 		defer sess.Close()
 		var buf bytes.Buffer
 		sess.Stdout, sess.Stderr = &buf, &buf
+		if pty {
+			// PTY обязателен для ndmc-чтений: без tty ndmc рендерит усечённый
+			// вывод (клип хвоста running-config и второго show — парсеры слепы,
+			// идемпотентный план никогда не сходится; вероятная корневая причина
+			// «резолв сегмента возвращает пустоту» bug 3de63d9e).
+			if perr := sess.RequestPty("dumb", 200, 500, nil); perr != nil {
+				return "", fmt.Errorf("ssh pty request: %w", perr)
+			}
+		}
 		runErr = sess.Run(script)
 		return buf.String(), runErr
 	}

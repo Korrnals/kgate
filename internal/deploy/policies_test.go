@@ -259,3 +259,50 @@ func TestPoliciesUnbindScriptTrueForms(t *testing.T) {
 		}
 	}
 }
+
+// Полевой формат `show ip policy` (KeeneticOS 4.x, живой роутер 2026-11-12):
+// табличная строка "policy, name = VPN, description = ..." — рецепт создания
+// не должен порождаться, когда политика существует.
+func TestPolicyObjectRE_TableFormat(t *testing.T) {
+	out := "\n           policy, name = VPN, description = Туннель - весь трафик идет через VPN: \n" +
+		"           policy, name = NO-VPN, description = Напрямую: \n"
+	if !policyObjectRE("VPN").MatchString(out) {
+		t.Fatal("VPN не найден в табличном формате show ip policy")
+	}
+	if !policyObjectRE("NO-VPN").MatchString(out) {
+		t.Fatal("NO-VPN не найден в табличном формате show ip policy")
+	}
+	absent := "policy, name = OTHER, description = x:\n"
+	if policyObjectRE("VPN").MatchString(absent) {
+		t.Fatal("ложное срабатывание на отсутствующей политике")
+	}
+}
+
+// PTY-сессии рендерят CRLF; StripANSI обязан снять \r до парсинга.
+func TestSegmentBindings_CRLF(t *testing.T) {
+	raw := "ip hotspot\r\n    \x1b[Kpolicy Home VPN\r\n    policy Bridge2 NO-VPN\r\n    host aa:bb:cc:dd:ee:ff policy VPN\r\n"
+	clean := policy.StripANSI(raw)
+	got := segmentBindings(clean)
+	if got["Home"] != "VPN" || got["Bridge2"] != "NO-VPN" {
+		t.Fatalf("CRLF-парсинг сегментов сломан: %v", got)
+	}
+	bindings := policy.ParseHotspotBindings(clean)
+	if bindings["aa:bb:cc:dd:ee:ff"] != "VPN" {
+		t.Fatalf("CRLF-парсинг host-привязок сломан: %v", bindings)
+	}
+}
+
+// Порядок splitShows: running-config ДО маркера, show ip policy — после.
+func TestSplitShows_Order(t *testing.T) {
+	out := "ip hotspot\n    policy Home VPN\n=== kgate-show-split ===\npolicy, name = VPN\n"
+	rc, ip, err := splitShows(out)
+	if err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	if !strings.Contains(rc, "policy Home VPN") {
+		t.Fatalf("runCfg не содержит running-config: %q", rc)
+	}
+	if !strings.Contains(ip, "policy, name = VPN") {
+		t.Fatalf("ipPolicy не содержит таблицу политик: %q", ip)
+	}
+}

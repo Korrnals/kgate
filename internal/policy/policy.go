@@ -242,6 +242,9 @@ var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 // StripANSI removes ANSI escape sequences — run it before any parsing of
 // ndmc show-output (truth table 08.11, field probe on 192.168.1.1).
 func StripANSI(s string) string {
+	// \r тоже мусор: PTY-сессии (см. ssh.go run) рендерят CRLF — голый \r
+	// ломает ^/$-якоря regexp'ов парсеров (^policy ... $ без \r? не матчит).
+	s = strings.ReplaceAll(s, "\r", "")
 	return ansiRE.ReplaceAllString(s, "")
 }
 
