@@ -6,34 +6,6 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **deploy/policy: реальные ndm-формы сегментных и host-unbind вербов**
-  (таблица истинности 08.11, полевые пробы на живом Keenetic
-  192.168.1.1). Старые вербы молча фейлились на реальном роутере при
-  каждом деплое:
-  - сегмент bind: `ip hotspot <SEG> policy <POL>` → рабочая форма
-    `ip hotspot policy <SEG> <POL>` (старая = «no such command»
-    [7405600]);
-  - сегмент unbind (destroy): `ip hotspot <SEG> no policy` →
-    `no ip hotspot policy <SEG>` (форма со значением = argument parse
-    error [7405602]);
-  - host unbind (`kgate policy set device none`, пре-existing с v1.5):
-    `ip hotspot host <MAC> no policy` → `no ip hotspot host <MAC>
-    policy`.
-- **ANSI-безопасный парсинг**: вывод ndmc несёт `\x1b[K`-префиксы — оба
-  парсера running-config слепы, план считал всё расходящимся и
-  пере-применял вербы (лишние ndmc-записи + save на сошедшемся
-  состоянии = износ flash). Escape-последовательности теперь strip'ятся
-  перед парсингом (`policy.StripANSI`).
-- **Вербальная проверка apply-цикла**: ndmc в tty возвращает rc=0 даже
-  на invalid-вербах — отказ виден только текстом. Стадия apply теперь
-  проверяет вывод каждого верба на `error[` / `system failed` /
-  `no such command` и фейлует верб по вербальному признаку.
-- examples/ndm-commands.sh: тот же мёртвый сегментный верб в
-  migrate_legacy_policies исправлен; lab-ожидания и документация
-  (admin/dev) переведены на истинные формы.
-
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path
@@ -277,6 +249,36 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   unbound (`no policy`) before policy deletion (ndm refuses to delete a
   policy while bindings remain), so destroy → re-apply restores the declared
   state from scratch.
+
+## [1.8.1] - 2026-11-12
+
+### Fixed
+
+- **deploy/policy: реальные ndm-формы сегментных и host-unbind вербов**
+  (таблица истинности 08.11, полевые пробы на живом Keenetic
+  192.168.1.1). Старые вербы молча фейлились на реальном роутере при
+  каждом деплое:
+  - сегмент bind: `ip hotspot <SEG> policy <POL>` → рабочая форма
+    `ip hotspot policy <SEG> <POL>` (старая = «no such command»
+    [7405600]);
+  - сегмент unbind (destroy): `ip hotspot <SEG> no policy` →
+    `no ip hotspot policy <SEG>` (форма со значением = argument parse
+    error [7405602]);
+  - host unbind (`kgate policy set device none`, пре-existing с v1.5):
+    `ip hotspot host <MAC> no policy` → `no ip hotspot host <MAC>
+    policy`.
+- **ANSI-безопасный парсинг**: вывод ndmc несёт `\x1b[K`-префиксы — оба
+  парсера running-config слепы, план считал всё расходящимся и
+  пере-применял вербы (лишние ndmc-записи + save на сошедшемся
+  состоянии = износ flash). Escape-последовательности теперь strip'ятся
+  перед парсингом (`policy.StripANSI`).
+- **Вербальная проверка apply-цикла**: ndmc в tty возвращает rc=0 даже
+  на invalid-вербах — отказ виден только текстом. Стадия apply теперь
+  проверяет вывод каждого верба на `error[` / `system failed` /
+  `no such command` и фейлует верб по вербальному признаку.
+- examples/ndm-commands.sh: тот же мёртвый сегментный верб в
+  migrate_legacy_policies исправлен; lab-ожидания и документация
+  (admin/dev) переведены на истинные формы.
 
 ## [1.5.0] - 2026-11-09
 
