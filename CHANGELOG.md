@@ -280,6 +280,30 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   migrate_legacy_policies исправлен; lab-ожидания и документация
   (admin/dev) переведены на истинные формы.
 
+## [1.8.2] - 2026-11-12
+
+### Fixed
+- **deploy: PTY reads + convergent policy plan.** Field testing on the
+  live router (2026-11-12) exposed three stacked read-path defects that
+  made the declarative policies plan never converge (every apply
+  re-issued all verbs and wrote flash):
+  - `ndmc` without a tty clips its output - the tail of
+    `show running-config` and the second `show ip policy` were lost,
+    blinding the parsers. State reads now run over a PTY; process-start
+    scripts deliberately stay PTY-free (a PTY session becomes the
+    controlling terminal of the started daemons - closing ssh then
+    SIGHUP-kills kgate/sing-box; caught live).
+  - the split marker was printed before running-config while the splitter
+    expects `rc; sep; pol` - the running-config side was always empty.
+  - `show ip policy` renders the KeeneticOS 4.x table format
+    (`policy, name = VPN, description = ...`) which the policy-existence
+    check did not match, so creation recipes fired every time.
+  Additionally the policy read now retries with backoff (ndmc can briefly
+  return an EMPTY output with a nil ssh error right after the heavy ndm
+  stage) and verb application checks ndmc's verbal error surface.
+- A PTY regression that killed the daemon via SIGHUP on session close
+  was caught and contained in the same slice: only reads get a PTY.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
