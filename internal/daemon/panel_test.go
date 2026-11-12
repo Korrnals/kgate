@@ -6,12 +6,16 @@ package daemon
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"kgate/internal/certs"
 	"time"
 
 	"kgate/internal/model"
@@ -346,5 +350,49 @@ func TestPanel_TailLinesChunkBoundary(t *testing.T) {
 		if !strings.HasPrefix(lines[0], "строка-") {
 			t.Fatalf("первая строка мусорная: %q", lines[0])
 		}
+	}
+}
+
+// Регрессия 12.11.2026: srv.ServeTLS(nil, …) = SIGSEGV при старте демона
+// (панель поднималась и мгновенно валила процесс). servePanelOn обязан
+// работать на реальном TLS-пути: живой листенер, живой HTTPS-запрос.
+func TestServePanelOn_RealTLS(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := certs.Ensure(dir, "127.0.0.1"); err != nil {
+		t.Fatalf("certs: %v", err)
+	}
+	d, _ := testDaemon(t, "192.0.2.1") // ndmc-seam фикстура
+	d.cfg.Daemon.WebRoot = dir
+	d.cfg.Panel.Password = "test-pass"
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- d.servePanelOn(ln, func(string) {}) }()
+
+	// дождаться старта и дернуть /kgate/login по HTTPS (self-signed → Insecure)
+	var page *http.Response
+	for i := 0; i < 40; i++ {
+		cl := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, Timeout: 2 * time.Second}
+		page, err = cl.Get("https://" + ln.Addr().String() + "/kgate/login")
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("HTTPS GET /kgate/login: %v", err)
+	}
+	defer page.Body.Close()
+	if page.StatusCode != 200 {
+		t.Fatalf("login page: HTTP %d", page.StatusCode)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("servePanelOn вернулся (упал?): %v", err)
+	default:
 	}
 }

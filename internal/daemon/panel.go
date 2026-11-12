@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -102,6 +103,18 @@ func (p *panelServer) muxHandler() *http.ServeMux {
 
 // servePanel blocks: TLS-листенер панели (вызывается в горутине из Run).
 func (d *Daemon) servePanel(logger func(string)) error {
+	addr := ":" + strconv.Itoa(d.cfg.Panel.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("panel listen %s: %w", addr, err)
+	}
+	return d.servePanelOn(ln, logger)
+}
+
+// servePanelOn — ядро servePanel с явным листенером (тестируемо: 127.0.0.1:0).
+// Урок 12.11.2026: srv.ServeTLS(nil, ...) = SIGSEGV при старте — листенер
+// обязан быть созданным до ServeTLS.
+func (d *Daemon) servePanelOn(ln net.Listener, logger func(string)) error {
 	cert, err := tls.LoadX509KeyPair(d.cfg.Daemon.WebRoot+"/server.crt", d.cfg.Daemon.WebRoot+"/server.key")
 	if err != nil {
 		return fmt.Errorf("server cert (web_root): %w", err)
@@ -109,15 +122,14 @@ func (d *Daemon) servePanel(logger func(string)) error {
 	p := newPanelServer(d)
 	mux := p.muxHandler()
 
-	addr := ":" + strconv.Itoa(d.cfg.Panel.Port)
-	srv := &http.Server{Addr: addr, Handler: mux,
+	srv := &http.Server{Handler: mux,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		},
 		ReadHeaderTimeout: 5 * time.Second}
-	logger("panel: HTTPS listener " + addr + " (/kgate/)")
-	return srv.ServeTLS(nil, "", "")
+	logger("panel: HTTPS listener " + ln.Addr().String() + " (/kgate/)")
+	return srv.ServeTLS(ln, "", "")
 }
 
 // ---- auth ----
