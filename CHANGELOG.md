@@ -6,6 +6,18 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Declarative DNS hosts (`dns.hosts`).** Static host records (fqdn → IPv4)
+  declared in `kgate.yaml` are applied idempotently by the deployer right
+  after the policies stage — a structural twin of the policies layer: the
+  delta is computed in Go against the live running-config (`ip host` top-level
+  lines parsed after ANSI stripping), only missing/divergent bind verbs are
+  executed, followed by a single save. `kgate destroy` unbinds exactly the
+  declared records (`no ip host <fqdn>`) before removing policies; the
+  destroy plan reflects the new step. fqdn validation is ndm-safe
+  (lowercase `[a-z0-9.-]`, at least one dot), addresses must be strict IPv4.
+  See docs/admin/dns.md.
+
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path

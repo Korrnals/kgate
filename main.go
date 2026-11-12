@@ -335,6 +335,7 @@ func main() {
 			if only("ndm") {
 				r.NDM()
 				r.Policies() // декларативные hotspot-привязки (после ndm: политики VPN/NO-VPN уже созданы)
+				r.DNSHosts() // декларативные dns-записи (после policies: тот же структурный близнец)
 			}
 			if only("services") {
 				r.Services()

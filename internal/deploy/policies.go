@@ -19,7 +19,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"kgate/internal/model"
 	"kgate/internal/policy"
@@ -160,22 +159,14 @@ func (r *Runner) Policies() {
 			r.mark(true), len(r.c.Policies.Segments), len(r.c.Policies.Devices))
 		return
 	}
-	// чтение живого состояния: до 3 попыток с бэкоффом — после тяжёлых стадий
-	// (ndm-commands.sh = сотни ndmc-вызовов) роутер может кратко отдавать
-	// ПУСТОЙ вывод с nil-ошибкой ssh (полевой кейс 2026-11-12: len=0 при
-	// живом транспорте). Повтор идемпотентен, пауза даёт ndm выдохнуть.
-	var runCfg, ipPolicy string
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * 2 * time.Second)
-		}
-		out, err := r.ssh.ptyRun(`ndmc -c "show running-config"; printf '%s\n' "` + showSeparator + `"; ndmc -c "show ip policy"`)
-		if err != nil {
-			continue
-		}
+	// чтение живого состояния через общий ретрай-хелпер (readState): 3 попытки,
+	// бэкофф 2s/4s, пустой вывод = провал попытки (полевой кейс 2026-11-12).
+	runCfg, ipPolicy := "", ""
+	if out, ok := r.readState(`ndmc -c "show running-config"; printf '%s\n' "` + showSeparator + `"; ndmc -c "show ip policy"`); ok {
+		var err error
 		runCfg, ipPolicy, err = splitShows(out)
-		if err == nil {
-			break
+		if err != nil {
+			runCfg, ipPolicy = "", ""
 		}
 	}
 	if runCfg == "" && ipPolicy == "" {

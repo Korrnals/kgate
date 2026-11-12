@@ -129,6 +129,7 @@ func DestroyPlan(c *model.Config) string {
   - ndm: снять route-pin'ы (%s, 77.88.8.8) и name-server 77.88.8.8
   - ndm: снять декларированные в kgate.yaml policies-привязки
     (сегменты и устройства, секция policies)
+  - ndm: снять декларированные dns-записи (секция dns.hosts)
   - ndm: ПОЛНОСТЬЮ удалить интерфейс Proxy0 и политики-сценарии
     (v2: VPN, NO-VPN; legacy v1: VPN-TV, VPN-Laptops-Phones, DIRECT-NOVPN)
   - проверить, что следов kgate в running-config не осталось
@@ -449,6 +450,11 @@ echo "pins removed"`
 	r.step("снятие route-pin'ов и name-server", pins)
 
 	fmt.Println("→ destroy: ndm (объекты)")
+	// декларативные dns-записи снимаются ДО политик (тот же порядок:
+	// сначала зависимости, потом объекты)
+	if dnsDeclared(r.c.DNS.Hosts) {
+		r.step("снятие декларированных dns-записей (dns.hosts)", dnsUnbindScript(r.c.DNS.Hosts))
+	}
 	// декларативные привязки снимаются ДО удаления политик: ndm отказывается
 	// удалять `no ip policy`, пока на политике остаются привязки (сегментные
 	// или device-); `no policy` верб безопасен и при отсутствии привязки

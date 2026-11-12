@@ -2,8 +2,10 @@ package model
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +33,10 @@ type Config struct {
 	// Логические политики VPN|NO-VPN маппятся 1:1 на ndm-объекты, создаваемые
 	// ndm-commands.sh (VPN несёт описание «Туннель - весь трафик идет через VPN»).
 	Policies Policies `yaml:"policies"`
+
+	// DNS — декларативные статические host-записи (1.10.0): применяются стадией
+	// deploy DNSHosts (после policies, идемпотентно), снимаются destroy'ом.
+	DNS DNS `yaml:"dns"`
 
 	API struct {
 		Port int    `yaml:"port"` // daemon mTLS API port on the router
@@ -99,6 +105,34 @@ func (p *Policies) Validate() error {
 		}
 		if !policy.ValidMAC(d.MAC) {
 			return fmt.Errorf("policies.devices[%d]: mac %q не похож на MAC (aa:bb:cc:dd:ee:ff)", i, d.MAC)
+		}
+	}
+	return nil
+}
+
+// DNS — секция dns в kgate.yaml: декларативные статические host-записи
+// (fqdn → IPv4). Truth table 12.11 (живой роутер): bind — `ip host <fqdn> <ip>`
+// (появляется в running-config top-level строкой), unbind — `no ip host <fqdn>`.
+type DNS struct {
+	Hosts map[string]string `yaml:"hosts"` // fqdn → IPv4
+}
+
+// dnsFqdnRE — ndm-безопасная форма fqdn: только [a-z0-9.-], метки без
+// ведущего/хвостового дефиса, ровно по одной точке между метками (кавычки,
+// метасимволы и shell-токены отсечены самим charset'ом — тот же дух, что
+// в Policies.Validate).
+var dnsFqdnRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+
+// Validate проверяет декларацию dns.hosts: ndm-безопасный fqdn и строгая
+// IPv4-форма адреса. Каждое сообщение называет оскорбивший элемент конфига.
+func (d *DNS) Validate() error {
+	for fqdn, ip := range d.Hosts {
+		if !dnsFqdnRE.MatchString(fqdn) {
+			return fmt.Errorf("dns.hosts[%q]: fqdn пустой, не в нижнем регистре, без точки или содержит недопустимые для ndm символы", fqdn)
+		}
+		parsed := net.ParseIP(ip)
+		if parsed == nil || parsed.To4() == nil {
+			return fmt.Errorf("dns.hosts[%q]: адрес %q — не IPv4 (ожидается форма 192.168.1.10)", fqdn, ip)
 		}
 	}
 	return nil
