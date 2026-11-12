@@ -325,6 +325,16 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   `return_url` = `http://192.168.1.1/`) with `KGATE_PANEL_*` env
   overrides; docs: docs/admin/panel.md.
 
+## [1.9.1] - 2026-11-12
+
+### Fixed
+- **daemon: the web panel crashed the whole daemon at startup.**
+  `http.Server.ServeTLS(nil, ...)` dereferenced a nil listener — the
+  panel goroutine segfaulted right after the startup log line and the
+  daemon died silently into the boot-log (caught live on the router).
+  The listener is now created explicitly; a regression test drives a
+  real HTTPS request through the self-signed panel path.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
