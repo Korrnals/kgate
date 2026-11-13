@@ -274,6 +274,218 @@ func TestResolveSegment(t *testing.T) {
 	}
 }
 
+// fixtureHotspotLive mirrors the ACTUAL `ndmc -c "show ip hotspot"` render
+// captured over ssh from the live router (2026-11-13, kgate-001): the
+// association render — `interface:` EMPTY with the identity on `id:`/`name:`/
+// `description:` sub-lines, one block per wireless association, the host
+// fields precede their interface block, policy:/active: follow it and
+// describe the association. MACs/hostnames/IPs are sanitized, the structure
+// is verbatim (alignment, blank lines, empty values, \x1b[K noise).
+// Bug 3de63d9e: the old parser took the empty interface: value as the name →
+// Segment.Name == "" → every resolve died («резолв возвращает пустоту»).
+const fixtureHotspotLive = "\x1b[K\n" + `
+             host:
+                  mac: aa:bb:cc:dd:ee:01
+                  via: aa:bb:cc:dd:ee:01
+                   ip: 192.168.3.11
+                  ip6:
+             hostname: device-1
+                 name: device-1
+         mws-backhaul: no
+
+            interface:
+                       id: Bridge2
+                     name: Bridge2
+              description: SMART
+
+                 dhcp:
+                  expires: 13296
+
+           registered: yes
+               access: permit
+             schedule:
+               policy: NO-VPN
+             priority: 6
+               active: yes
+              rxbytes: 12345
+              txbytes: 678
+                 link: up
+                 ssid: |||
+                   ap: WifiMaster0/AccessPoint1
+                  psm: yes
+                  mld: no
+        authenticated: yes
+               txrate: 15
+                   ht: 40
+                 mode: 11n
+                 rssi: -58
+             security: wpa2-psk
+               uptime: 471276
+            last-seen: 5
+
+        traffic-shape:
+                       rx: 0
+                       tx: 0
+                     mode: mac
+                 schedule:
+
+             host:
+                  mac: aa:bb:cc:dd:ee:02
+                  via: aa:bb:cc:dd:ee:02
+                   ip: 192.168.3.12
+                  ip6:
+             hostname: device-2
+                 name: device-2
+         mws-backhaul: no
+
+            interface:
+                       id: Bridge2
+                     name: Bridge2
+              description: SMART
+
+                 dhcp:
+                  expires: 0
+
+           registered: yes
+               access: permit
+             schedule:
+               policy: NO-VPN
+             priority: 6
+               active: yes
+                 ssid: |||
+
+             host:
+                  mac: aa:bb:cc:dd:ee:03
+                  via: aa:bb:cc:dd:ee:03
+                   ip: 192.168.1.51
+                  ip6:
+             hostname: tv-box
+                 name: tv-box
+         mws-backhaul: no
+
+            interface:
+                       id: Bridge0
+                     name: Home
+              description: WLAN
+
+                 dhcp:
+                  expires: 0
+
+           registered: yes
+               access: permit
+             schedule:
+               policy: VPN
+             priority: 2
+               active: yes
+                 ssid: |||
+                   ap: WifiMaster1/AccessPoint0
+`
+
+// TestParseHotspot_AssociationRender pins the live association render
+// (kgate-001 regression): identity from id:/name: sub-lines, dedup per
+// segment, association policy:/active: on the HOST (not the segment), and
+// each host attached to ITS OWN segment (no off-by-one across associations).
+func TestParseHotspot_AssociationRender(t *testing.T) {
+	tbl := ParseHotspot(fixtureHotspotLive)
+
+	if len(tbl.Segments) != 2 {
+		t.Fatalf("segments: got %d, want 2 (dedup failed): %+v", len(tbl.Segments), tbl.Segments)
+	}
+	var smart, home *Segment
+	for i := range tbl.Segments {
+		switch tbl.Segments[i].Name {
+		case "Bridge2":
+			smart = &tbl.Segments[i]
+		case "Home":
+			home = &tbl.Segments[i]
+		}
+	}
+	if smart == nil || home == nil {
+		t.Fatalf("segments by ndm name missing: %+v", tbl.Segments)
+	}
+	if smart.Id != "Bridge2" || smart.Description != "SMART" || smart.Policy != "" || smart.Active {
+		t.Errorf("Bridge2 = %+v (policy:/active: association lines must NOT pollute the segment; Active=false here — daemon derives display-active from hosts)", smart)
+	}
+	if home.Id != "Bridge0" || home.Description != "WLAN" || home.Policy != "" || home.Active {
+		t.Errorf("Home = %+v", home)
+	}
+
+	if len(tbl.Hosts) != 3 {
+		t.Fatalf("hosts: got %d, want 3: %+v", len(tbl.Hosts), tbl.Hosts)
+	}
+	byMAC := map[string]Host{}
+	for _, h := range tbl.Hosts {
+		byMAC[h.MAC] = h
+	}
+	h1 := byMAC["aa:bb:cc:dd:ee:01"]
+	if h1.Segment != "Bridge2" || h1.Policy != "NO-VPN" || !h1.Active || h1.Hostname != "device-1" {
+		t.Errorf("host1 = %+v (its own segment + association policy/active)", h1)
+	}
+	h2 := byMAC["aa:bb:cc:dd:ee:02"]
+	if h2.Segment != "Bridge2" || h2.Policy != "NO-VPN" {
+		t.Errorf("host2 = %+v (dedup must not break host attach)", h2)
+	}
+	h3 := byMAC["aa:bb:cc:dd:ee:03"]
+	if h3.Segment != "Home" || h3.Policy != "VPN" {
+		t.Errorf("host3 = %+v", h3)
+	}
+}
+
+// TestResolveSegment_LiveNames pins the kgate-001 contract: the ndm name
+// (`name:` sub-line, running-config's verb token) resolves FIRST, the bridge
+// id and the description are aliases, and a miss is LOUD (names the target
+// AND what ndm actually showed).
+func TestResolveSegment_LiveNames(t *testing.T) {
+	tbl := ParseHotspot(fixtureHotspotLive)
+
+	s, err := ResolveSegment(tbl, "Home") // ndm name (kgate.yaml declares `Home: VPN`)
+	if err != nil || s.Name != "Home" {
+		t.Errorf("by ndm name: (%+v, %v)", s, err)
+	}
+	s, err = ResolveSegment(tbl, "bridge0") // bridge id alias
+	if err != nil || s.Name != "Home" || s.Id != "Bridge0" {
+		t.Errorf("by id alias: (%+v, %v)", s, err)
+	}
+	s, err = ResolveSegment(tbl, "smart") // description alias (web-UI label)
+	if err != nil || s.Name != "Bridge2" {
+		t.Errorf("by description alias: (%+v, %v)", s, err)
+	}
+	_, err = ResolveSegment(tbl, "ghost")
+	if err == nil {
+		t.Fatal("unknown segment must fail")
+	}
+	for _, want := range []string{"ghost", "Home", "Bridge2", "WLAN"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("loud miss must contain %q, got: %v", want, err)
+		}
+	}
+}
+
+func TestResolveSegment_EmptyTable_Loud(t *testing.T) {
+	// a parser-vs-firmware drift signal: no segments at all must SAY so
+	_, err := ResolveSegment(Table{}, "Home")
+	if err == nil || !strings.Contains(err.Error(), "ПУСТО") {
+		t.Errorf("empty table must be loud, got: %v", err)
+	}
+}
+
+// TestParseSegmentBindings pins the segment-bind parse of running-config
+// (the daemon's overlay source, kgate-001): `policy <ndm-name> <VPN|NO-VPN>`
+// inside the ip hotspot block; access-policy lines (`permit`) do not match;
+// ANSI + CRLF noise stripped inside.
+func TestParseSegmentBindings(t *testing.T) {
+	cfg := "ip hotspot\r\n" +
+		"\x1b[K    policy Home VPN\x1b[K\r\n" +
+		"    policy Bridge1 permit\r\n" +
+		"    policy Bridge2 NO-VPN\r\n" +
+		"    host aa:bb:cc:dd:ee:03 policy NO-VPN\r\n"
+	got := ParseSegmentBindings(cfg)
+	want := map[string]string{"Home": "VPN", "Bridge2": "NO-VPN"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("segment bindings = %v, want %v (host bind must stay out)", got, want)
+	}
+}
+
 // ---- command generators ----
 
 func TestBindDeviceCmd(t *testing.T) {
