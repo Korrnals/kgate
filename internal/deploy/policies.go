@@ -30,11 +30,9 @@ type policyVerb struct {
 	cmd   string
 }
 
-// segmentBindingRE выцепляет segment-привязки из running-config:
-// `policy <ndm-имя> <VPN|NO-VPN>` внутри блока `ip hotspot`. Линия
-// `policy Bridge1 permit` (access-policy веб-морды) матчится только если
-// второй токен — VPN|NO-VPN, что и есть наше управляемое множество.
-var segmentBindingRE = regexp.MustCompile(`(?m)^[ \t]*policy[ \t]+([^ \t]+)[ \t]+(VPN|NO-VPN)[ \t]*$`)
+// segment-привязки парсятся в internal/policy.ParseSegmentBindings — тот же
+// regex, что у демона (kgate-001: единый источник истины по `policy <seg>
+// <VPN|NO-VPN>` линиям running-config); ANSI/CRLF strip встроен туда.
 
 // VERBAL-FAIL: живой ndmc в tty возвращает rc=0 даже на invalid-вербах —
 // отказ виден ТОЛЬКО вербально (truth table 08.11: "no such command" —
@@ -49,13 +47,10 @@ var policyObjectRE = func(name string) *regexp.Regexp {
 	return regexp.MustCompile(`(?m)(^|[ \t])policy,[ \t]*name[ \t]*=[ \t]*` + q + `([ \t]?,|$)|(^|[ \t])name:[ \t]*` + q + `([ \t]|$)|(^|[ \t])policy[ \t]+` + q + `([ \t]|$)`)
 }
 
-// segmentBindings парсит running-config в map(ndm-имя → политика).
+// segmentBindings парсит running-config в map(ndm-имя → политика) —
+// делегат policy.ParseSegmentBindings (kgate-001: единый парсер).
 func segmentBindings(runCfg string) map[string]string {
-	out := map[string]string{}
-	for _, m := range segmentBindingRE.FindAllStringSubmatch(runCfg, -1) {
-		out[m[1]] = m[2]
-	}
-	return out
+	return policy.ParseSegmentBindings(runCfg)
 }
 
 // createRecipe — вербы полного создания ndm-политики (зеркало
