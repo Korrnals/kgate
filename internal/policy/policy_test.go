@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -382,5 +383,40 @@ func TestParseHotspotBindings_ANSIPrefixed(t *testing.T) {
 	got := ParseHotspotBindings(cfg)
 	if len(got) != 1 || got["f4:e8:c7:c4:4f:a4"] != "VPN" {
 		t.Errorf("ANSI-prefixed parse: %v", got)
+	}
+}
+
+// kgate-002: golden-фикстура живого PTY-рендера running-config (30.8 КБ,
+// CRLF + \x1b[K, формы строк — полевые захваты 2026-11-11/12). Регрессия
+// kgate-001: без tty ndmc клипует ХВОСТ конфига, а привязки ip hotspot
+// растут к концу — оверлей слепнет. Фикстура фиксирует полный контракт:
+// размер, число привязок, хвостовые маркеры обязаны парситься ЦЕЛИКОМ.
+func TestParseHotspotBindings_LargeGoldenFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/running-config-large.golden")
+	if err != nil {
+		t.Fatalf("golden fixture: %v", err)
+	}
+	cfg := string(raw)
+	if len(cfg) < 27000 {
+		t.Fatalf("фикстура сжалась: %d bytes, want >= 27000 (golden порч?)", len(cfg))
+	}
+	if strings.ContainsAny(StripANSI(cfg), "\r") || strings.Contains(StripANSI(cfg), "\x1b[K") {
+		t.Fatalf("StripANSI не снял PTY-мусор крупного рендера")
+	}
+	// хвостовой маркер — последняя строка файла: зона клипа non-tty ndmc
+	const tailMAC = "aa:bb:cc:dd:ee:ff"
+	off := strings.LastIndex(cfg, tailMAC)
+	if off < len(cfg)-2048 {
+		t.Fatalf("хвостовой маркер уехал из зоны клипа: offset=%d len=%d", off, len(cfg))
+	}
+	got := ParseHotspotBindings(cfg)
+	if len(got) != 201 {
+		t.Errorf("bindings = %d, want 201 (клип или парсер слепы)", len(got))
+	}
+	if got[tailMAC] != "VPN" {
+		t.Errorf("хвостовая привязка %s не распарсилась: %q", tailMAC, got[tailMAC])
+	}
+	if got["aa:bb:cc:01:02:0b"] != "NO-VPN" {
+		t.Errorf("ранняя привязка из хвостовой секции потеряна: %q", got["aa:bb:cc:01:02:0b"])
 	}
 }

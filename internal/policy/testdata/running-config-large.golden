@@ -1,0 +1,861 @@
+[K! $$0 4.2.1 [config]
+! $$$ kgate-002 golden: shapes from field captures 2026-11-11/12;
+! synthetic content, deterministic; PTY render (CRLF + erase-to-EOL)
+[K! $$$ System
+system
+    domain-name abyss.lab
+[K    hostname router
+!
+interface Bridge0
+[K    description "seg-00"
+    include AccessPoint_0
+    security private
+[K    ip address 192.168.0.1/24
+    ip hotspot
+!
+[Kinterface Bridge1
+    description "seg-01"
+    include AccessPoint_1
+[K    security private
+    ip address 192.168.1.1/24
+    ip hotspot
+[K!
+interface Bridge2
+    description "seg-02"
+[K    include AccessPoint_2
+    security private
+    ip address 192.168.2.1/24
+[K    ip hotspot
+!
+interface Bridge3
+[K    description "seg-03"
+    include AccessPoint_3
+    security private
+[K    ip address 192.168.3.1/24
+    ip hotspot
+!
+[Kinterface Bridge4
+    description "seg-04"
+    include AccessPoint_4
+[K    security private
+    ip address 192.168.4.1/24
+    ip hotspot
+[K!
+interface Bridge5
+    description "seg-05"
+[K    include AccessPoint_5
+    security private
+    ip address 192.168.5.1/24
+[K    ip hotspot
+!
+interface Bridge6
+[K    description "seg-06"
+    include AccessPoint_6
+    security private
+[K    ip address 192.168.6.1/24
+    ip hotspot
+!
+[Kinterface Bridge7
+    description "seg-07"
+    include AccessPoint_7
+[K    security private
+    ip address 192.168.7.1/24
+    ip hotspot
+[K!
+interface Bridge8
+    description "seg-08"
+[K    include AccessPoint_0
+    security private
+    ip address 192.168.8.1/24
+[K    ip hotspot
+!
+interface Bridge9
+[K    description "seg-09"
+    include AccessPoint_1
+    security private
+[K    ip address 192.168.9.1/24
+    ip hotspot
+!
+[Kinterface Bridge10
+    description "seg-10"
+    include AccessPoint_2
+[K    security private
+    ip address 192.168.10.1/24
+    ip hotspot
+[K!
+interface Bridge11
+    description "seg-11"
+[K    include AccessPoint_3
+    security private
+    ip address 192.168.11.1/24
+[K    ip hotspot
+!
+interface Bridge12
+[K    description "seg-12"
+    include AccessPoint_4
+    security private
+[K    ip address 192.168.12.1/24
+    ip hotspot
+!
+[Kinterface Bridge13
+    description "seg-13"
+    include AccessPoint_5
+[K    security private
+    ip address 192.168.13.1/24
+    ip hotspot
+[K!
+interface Bridge14
+    description "seg-14"
+[K    include AccessPoint_6
+    security private
+    ip address 192.168.14.1/24
+[K    ip hotspot
+!
+interface Bridge15
+[K    description "seg-15"
+    include AccessPoint_7
+    security private
+[K    ip address 192.168.15.1/24
+    ip hotspot
+!
+[Kinterface Bridge16
+    description "seg-16"
+    include AccessPoint_0
+[K    security private
+    ip address 192.168.16.1/24
+    ip hotspot
+[K!
+interface Bridge17
+    description "seg-17"
+[K    include AccessPoint_1
+    security private
+    ip address 192.168.17.1/24
+[K    ip hotspot
+!
+interface Bridge18
+[K    description "seg-18"
+    include AccessPoint_2
+    security private
+[K    ip address 192.168.18.1/24
+    ip hotspot
+!
+[Kinterface Bridge19
+    description "seg-19"
+    include AccessPoint_3
+[K    security private
+    ip address 192.168.19.1/24
+    ip hotspot
+[K!
+! $$$ IP/DNS
+ip host n000.abyss.lab 192.168.1.10
+[Kip host n001.abyss.lab 192.168.1.11
+ip host n002.abyss.lab 192.168.1.12
+ip host n003.abyss.lab 192.168.1.13
+[Kip host n004.abyss.lab 192.168.1.14
+ip host n005.abyss.lab 192.168.1.15
+ip host n006.abyss.lab 192.168.1.16
+[Kip host n007.abyss.lab 192.168.1.17
+ip host n008.abyss.lab 192.168.1.18
+ip host n009.abyss.lab 192.168.1.19
+[Kip host n010.abyss.lab 192.168.1.20
+ip host n011.abyss.lab 192.168.1.21
+ip host n012.abyss.lab 192.168.1.22
+[Kip host n013.abyss.lab 192.168.1.23
+ip host n014.abyss.lab 192.168.1.24
+ip host n015.abyss.lab 192.168.1.25
+[Kip host n016.abyss.lab 192.168.1.26
+ip host n017.abyss.lab 192.168.1.27
+ip host n018.abyss.lab 192.168.1.28
+[Kip host n019.abyss.lab 192.168.1.29
+ip host n020.abyss.lab 192.168.1.30
+ip host n021.abyss.lab 192.168.1.31
+[Kip host n022.abyss.lab 192.168.1.32
+ip host n023.abyss.lab 192.168.1.33
+ip host n024.abyss.lab 192.168.1.34
+[Kip host n025.abyss.lab 192.168.1.35
+ip host n026.abyss.lab 192.168.1.36
+ip host n027.abyss.lab 192.168.1.37
+[Kip host n028.abyss.lab 192.168.1.38
+ip host n029.abyss.lab 192.168.1.39
+ip host n030.abyss.lab 192.168.1.40
+[Kip host n031.abyss.lab 192.168.1.41
+ip host n032.abyss.lab 192.168.1.42
+ip host n033.abyss.lab 192.168.1.43
+[Kip host n034.abyss.lab 192.168.1.44
+ip host n035.abyss.lab 192.168.1.45
+ip host n036.abyss.lab 192.168.1.46
+[Kip host n037.abyss.lab 192.168.1.47
+ip host n038.abyss.lab 192.168.1.48
+ip host n039.abyss.lab 192.168.1.49
+[Kip host n040.abyss.lab 192.168.1.50
+ip host n041.abyss.lab 192.168.1.51
+ip host n042.abyss.lab 192.168.1.52
+[Kip host n043.abyss.lab 192.168.1.53
+ip host n044.abyss.lab 192.168.1.54
+ip host n045.abyss.lab 192.168.1.55
+[Kip host n046.abyss.lab 192.168.1.56
+ip host n047.abyss.lab 192.168.1.57
+ip host n048.abyss.lab 192.168.1.58
+[Kip host n049.abyss.lab 192.168.1.59
+ip host n050.abyss.lab 192.168.1.60
+ip host n051.abyss.lab 192.168.1.61
+[Kip host n052.abyss.lab 192.168.1.62
+ip host n053.abyss.lab 192.168.1.63
+ip host n054.abyss.lab 192.168.1.64
+[Kip host n055.abyss.lab 192.168.1.65
+ip host n056.abyss.lab 192.168.1.66
+ip host n057.abyss.lab 192.168.1.67
+[Kip host n058.abyss.lab 192.168.1.68
+ip host n059.abyss.lab 192.168.1.69
+ip host n060.abyss.lab 192.168.1.70
+[Kip host n061.abyss.lab 192.168.1.71
+ip host n062.abyss.lab 192.168.1.72
+ip host n063.abyss.lab 192.168.1.73
+[Kip host n064.abyss.lab 192.168.1.74
+ip host n065.abyss.lab 192.168.1.75
+ip host n066.abyss.lab 192.168.1.76
+[Kip host n067.abyss.lab 192.168.1.77
+ip host n068.abyss.lab 192.168.1.78
+ip host n069.abyss.lab 192.168.1.79
+[Kip host n070.abyss.lab 192.168.1.80
+ip host n071.abyss.lab 192.168.1.81
+ip host n072.abyss.lab 192.168.1.82
+[Kip host n073.abyss.lab 192.168.1.83
+ip host n074.abyss.lab 192.168.1.84
+ip host n075.abyss.lab 192.168.1.85
+[Kip host n076.abyss.lab 192.168.1.86
+ip host n077.abyss.lab 192.168.1.87
+ip host n078.abyss.lab 192.168.1.88
+[Kip host n079.abyss.lab 192.168.1.89
+ip host n080.abyss.lab 192.168.1.90
+ip host n081.abyss.lab 192.168.1.91
+[Kip host n082.abyss.lab 192.168.1.92
+ip host n083.abyss.lab 192.168.1.93
+ip host n084.abyss.lab 192.168.1.94
+[Kip host n085.abyss.lab 192.168.1.95
+ip host n086.abyss.lab 192.168.1.96
+ip host n087.abyss.lab 192.168.1.97
+[Kip host n088.abyss.lab 192.168.1.98
+ip host n089.abyss.lab 192.168.1.99
+ip host n090.abyss.lab 192.168.1.100
+[Kip host n091.abyss.lab 192.168.1.101
+ip host n092.abyss.lab 192.168.1.102
+ip host n093.abyss.lab 192.168.1.103
+[Kip host n094.abyss.lab 192.168.1.104
+ip host n095.abyss.lab 192.168.1.105
+ip host n096.abyss.lab 192.168.1.106
+[Kip host n097.abyss.lab 192.168.1.107
+ip host n098.abyss.lab 192.168.1.108
+ip host n099.abyss.lab 192.168.1.109
+[Kip host n100.abyss.lab 192.168.1.110
+ip host n101.abyss.lab 192.168.1.111
+ip host n102.abyss.lab 192.168.1.112
+[Kip host n103.abyss.lab 192.168.1.113
+ip host n104.abyss.lab 192.168.1.114
+ip host n105.abyss.lab 192.168.1.115
+[Kip host n106.abyss.lab 192.168.1.116
+ip host n107.abyss.lab 192.168.1.117
+ip host n108.abyss.lab 192.168.1.118
+[Kip host n109.abyss.lab 192.168.1.119
+ip host n110.abyss.lab 192.168.1.120
+ip host n111.abyss.lab 192.168.1.121
+[Kip host n112.abyss.lab 192.168.1.122
+ip host n113.abyss.lab 192.168.1.123
+ip host n114.abyss.lab 192.168.1.124
+[Kip host n115.abyss.lab 192.168.1.125
+ip host n116.abyss.lab 192.168.1.126
+ip host n117.abyss.lab 192.168.1.127
+[Kip host n118.abyss.lab 192.168.1.128
+ip host n119.abyss.lab 192.168.1.129
+ip host n120.abyss.lab 192.168.1.130
+[Kip host n121.abyss.lab 192.168.1.131
+ip host n122.abyss.lab 192.168.1.132
+ip host n123.abyss.lab 192.168.1.133
+[Kip host n124.abyss.lab 192.168.1.134
+ip host n125.abyss.lab 192.168.1.135
+ip host n126.abyss.lab 192.168.1.136
+[Kip host n127.abyss.lab 192.168.1.137
+ip host n128.abyss.lab 192.168.1.138
+ip host n129.abyss.lab 192.168.1.139
+[Kip host n130.abyss.lab 192.168.1.140
+ip host n131.abyss.lab 192.168.1.141
+ip host n132.abyss.lab 192.168.1.142
+[Kip host n133.abyss.lab 192.168.1.143
+ip host n134.abyss.lab 192.168.1.144
+ip host n135.abyss.lab 192.168.1.145
+[Kip host n136.abyss.lab 192.168.1.146
+ip host n137.abyss.lab 192.168.1.147
+ip host n138.abyss.lab 192.168.1.148
+[Kip host n139.abyss.lab 192.168.1.149
+ip host n140.abyss.lab 192.168.1.150
+ip host n141.abyss.lab 192.168.1.151
+[Kip host n142.abyss.lab 192.168.1.152
+ip host n143.abyss.lab 192.168.1.153
+ip host n144.abyss.lab 192.168.1.154
+[Kip host n145.abyss.lab 192.168.1.155
+ip host n146.abyss.lab 192.168.1.156
+ip host n147.abyss.lab 192.168.1.157
+[Kip host n148.abyss.lab 192.168.1.158
+ip host n149.abyss.lab 192.168.1.159
+ip host n150.abyss.lab 192.168.1.160
+[Kip host n151.abyss.lab 192.168.1.161
+ip host n152.abyss.lab 192.168.1.162
+ip host n153.abyss.lab 192.168.1.163
+[Kip host n154.abyss.lab 192.168.1.164
+ip host n155.abyss.lab 192.168.1.165
+ip host n156.abyss.lab 192.168.1.166
+[Kip host n157.abyss.lab 192.168.1.167
+ip host n158.abyss.lab 192.168.1.168
+ip host n159.abyss.lab 192.168.1.169
+[Kip host n160.abyss.lab 192.168.1.170
+ip host n161.abyss.lab 192.168.1.171
+ip host n162.abyss.lab 192.168.1.172
+[Kip host n163.abyss.lab 192.168.1.173
+ip host n164.abyss.lab 192.168.1.174
+ip host n165.abyss.lab 192.168.1.175
+[Kip host n166.abyss.lab 192.168.1.176
+ip host n167.abyss.lab 192.168.1.177
+ip host n168.abyss.lab 192.168.1.178
+[Kip host n169.abyss.lab 192.168.1.179
+ip host n170.abyss.lab 192.168.1.180
+ip host n171.abyss.lab 192.168.1.181
+[Kip host n172.abyss.lab 192.168.1.182
+ip host n173.abyss.lab 192.168.1.183
+ip host n174.abyss.lab 192.168.1.184
+[Kip host n175.abyss.lab 192.168.1.185
+ip host n176.abyss.lab 192.168.1.186
+ip host n177.abyss.lab 192.168.1.187
+[Kip host n178.abyss.lab 192.168.1.188
+ip host n179.abyss.lab 192.168.1.189
+ip host n180.abyss.lab 192.168.1.190
+[Kip host n181.abyss.lab 192.168.1.191
+ip host n182.abyss.lab 192.168.1.192
+ip host n183.abyss.lab 192.168.1.193
+[Kip host n184.abyss.lab 192.168.1.194
+ip host n185.abyss.lab 192.168.1.195
+ip host n186.abyss.lab 192.168.1.196
+[Kip host n187.abyss.lab 192.168.1.197
+ip host n188.abyss.lab 192.168.1.198
+ip host n189.abyss.lab 192.168.1.199
+[Kip host n190.abyss.lab 192.168.1.200
+ip host n191.abyss.lab 192.168.1.201
+ip host n192.abyss.lab 192.168.1.202
+[Kip host n193.abyss.lab 192.168.1.203
+ip host n194.abyss.lab 192.168.1.204
+ip host n195.abyss.lab 192.168.1.205
+[Kip host n196.abyss.lab 192.168.1.206
+ip host n197.abyss.lab 192.168.1.207
+ip host n198.abyss.lab 192.168.1.208
+[Kip host n199.abyss.lab 192.168.1.209
+ip host n200.abyss.lab 192.168.1.210
+ip host n201.abyss.lab 192.168.1.211
+[Kip host n202.abyss.lab 192.168.1.212
+ip host n203.abyss.lab 192.168.1.213
+ip host n204.abyss.lab 192.168.1.214
+[Kip host n205.abyss.lab 192.168.1.215
+ip host n206.abyss.lab 192.168.1.216
+ip host n207.abyss.lab 192.168.1.217
+[Kip host n208.abyss.lab 192.168.1.218
+ip host n209.abyss.lab 192.168.1.219
+ip host n210.abyss.lab 192.168.1.220
+[Kip host n211.abyss.lab 192.168.1.221
+ip host n212.abyss.lab 192.168.1.222
+ip host n213.abyss.lab 192.168.1.223
+[Kip host n214.abyss.lab 192.168.1.224
+ip host n215.abyss.lab 192.168.1.225
+ip host n216.abyss.lab 192.168.1.226
+[Kip host n217.abyss.lab 192.168.1.227
+ip host n218.abyss.lab 192.168.1.228
+ip host n219.abyss.lab 192.168.1.229
+[Kip host n220.abyss.lab 192.168.1.230
+ip host n221.abyss.lab 192.168.1.231
+ip host n222.abyss.lab 192.168.1.232
+[Kip host n223.abyss.lab 192.168.1.233
+ip host n224.abyss.lab 192.168.1.234
+ip host n225.abyss.lab 192.168.1.235
+[Kip host n226.abyss.lab 192.168.1.236
+ip host n227.abyss.lab 192.168.1.237
+ip host n228.abyss.lab 192.168.1.238
+[Kip host n229.abyss.lab 192.168.1.239
+ip host n230.abyss.lab 192.168.1.240
+ip host n231.abyss.lab 192.168.1.241
+[Kip host n232.abyss.lab 192.168.1.242
+ip host n233.abyss.lab 192.168.1.243
+ip host n234.abyss.lab 192.168.1.244
+[Kip host n235.abyss.lab 192.168.1.245
+ip host n236.abyss.lab 192.168.1.246
+ip host n237.abyss.lab 192.168.1.247
+[Kip host n238.abyss.lab 192.168.1.248
+ip host n239.abyss.lab 192.168.1.249
+ip host n240.abyss.lab 192.168.1.10
+[Kip host n241.abyss.lab 192.168.1.11
+ip host n242.abyss.lab 192.168.1.12
+ip host n243.abyss.lab 192.168.1.13
+[Kip host n244.abyss.lab 192.168.1.14
+ip host n245.abyss.lab 192.168.1.15
+ip host n246.abyss.lab 192.168.1.16
+[Kip host n247.abyss.lab 192.168.1.17
+ip host n248.abyss.lab 192.168.1.18
+ip host n249.abyss.lab 192.168.1.19
+[Kip host n250.abyss.lab 192.168.1.20
+ip host n251.abyss.lab 192.168.1.21
+ip host n252.abyss.lab 192.168.1.22
+[Kip host n253.abyss.lab 192.168.1.23
+ip host n254.abyss.lab 192.168.1.24
+ip host n255.abyss.lab 192.168.1.25
+[Kip host n256.abyss.lab 192.168.1.26
+ip host n257.abyss.lab 192.168.1.27
+ip host n258.abyss.lab 192.168.1.28
+[Kip host n259.abyss.lab 192.168.1.29
+ip host n260.abyss.lab 192.168.1.30
+ip host n261.abyss.lab 192.168.1.31
+[Kip host n262.abyss.lab 192.168.1.32
+ip host n263.abyss.lab 192.168.1.33
+ip host n264.abyss.lab 192.168.1.34
+[Kip host n265.abyss.lab 192.168.1.35
+ip host n266.abyss.lab 192.168.1.36
+ip host n267.abyss.lab 192.168.1.37
+[Kip host n268.abyss.lab 192.168.1.38
+ip host n269.abyss.lab 192.168.1.39
+ip host n270.abyss.lab 192.168.1.40
+[Kip host n271.abyss.lab 192.168.1.41
+ip host n272.abyss.lab 192.168.1.42
+ip host n273.abyss.lab 192.168.1.43
+[Kip host n274.abyss.lab 192.168.1.44
+ip host n275.abyss.lab 192.168.1.45
+ip host n276.abyss.lab 192.168.1.46
+[Kip host n277.abyss.lab 192.168.1.47
+ip host n278.abyss.lab 192.168.1.48
+ip host n279.abyss.lab 192.168.1.49
+[Kip host n280.abyss.lab 192.168.1.50
+ip host n281.abyss.lab 192.168.1.51
+ip host n282.abyss.lab 192.168.1.52
+[Kip host n283.abyss.lab 192.168.1.53
+ip host n284.abyss.lab 192.168.1.54
+ip host n285.abyss.lab 192.168.1.55
+[Kip host n286.abyss.lab 192.168.1.56
+ip host n287.abyss.lab 192.168.1.57
+ip host n288.abyss.lab 192.168.1.58
+[Kip host n289.abyss.lab 192.168.1.59
+ip host n290.abyss.lab 192.168.1.60
+ip host n291.abyss.lab 192.168.1.61
+[Kip host n292.abyss.lab 192.168.1.62
+ip host n293.abyss.lab 192.168.1.63
+ip host n294.abyss.lab 192.168.1.64
+[Kip host n295.abyss.lab 192.168.1.65
+ip host n296.abyss.lab 192.168.1.66
+ip host n297.abyss.lab 192.168.1.67
+[Kip host n298.abyss.lab 192.168.1.68
+ip host n299.abyss.lab 192.168.1.69
+ip host n300.abyss.lab 192.168.1.70
+[Kip host n301.abyss.lab 192.168.1.71
+ip host n302.abyss.lab 192.168.1.72
+ip host n303.abyss.lab 192.168.1.73
+[Kip host n304.abyss.lab 192.168.1.74
+ip host n305.abyss.lab 192.168.1.75
+ip host n306.abyss.lab 192.168.1.76
+[Kip host n307.abyss.lab 192.168.1.77
+ip host n308.abyss.lab 192.168.1.78
+ip host n309.abyss.lab 192.168.1.79
+[Kip host n310.abyss.lab 192.168.1.80
+ip host n311.abyss.lab 192.168.1.81
+ip host n312.abyss.lab 192.168.1.82
+[Kip host n313.abyss.lab 192.168.1.83
+ip host n314.abyss.lab 192.168.1.84
+ip host n315.abyss.lab 192.168.1.85
+[Kip host n316.abyss.lab 192.168.1.86
+ip host n317.abyss.lab 192.168.1.87
+ip host n318.abyss.lab 192.168.1.88
+[Kip host n319.abyss.lab 192.168.1.89
+ip host n320.abyss.lab 192.168.1.90
+ip host n321.abyss.lab 192.168.1.91
+[Kip host n322.abyss.lab 192.168.1.92
+ip host n323.abyss.lab 192.168.1.93
+ip host n324.abyss.lab 192.168.1.94
+[Kip host n325.abyss.lab 192.168.1.95
+ip host n326.abyss.lab 192.168.1.96
+ip host n327.abyss.lab 192.168.1.97
+[Kip host n328.abyss.lab 192.168.1.98
+ip host n329.abyss.lab 192.168.1.99
+ip host n330.abyss.lab 192.168.1.100
+[Kip host n331.abyss.lab 192.168.1.101
+ip host n332.abyss.lab 192.168.1.102
+ip host n333.abyss.lab 192.168.1.103
+[Kip host n334.abyss.lab 192.168.1.104
+ip host n335.abyss.lab 192.168.1.105
+ip host n336.abyss.lab 192.168.1.106
+[Kip host n337.abyss.lab 192.168.1.107
+ip host n338.abyss.lab 192.168.1.108
+ip host n339.abyss.lab 192.168.1.109
+[Kip host n340.abyss.lab 192.168.1.110
+ip host n341.abyss.lab 192.168.1.111
+ip host n342.abyss.lab 192.168.1.112
+[Kip host n343.abyss.lab 192.168.1.113
+ip host n344.abyss.lab 192.168.1.114
+ip host n345.abyss.lab 192.168.1.115
+[Kip host n346.abyss.lab 192.168.1.116
+ip host n347.abyss.lab 192.168.1.117
+ip host n348.abyss.lab 192.168.1.118
+[Kip host n349.abyss.lab 192.168.1.119
+ip host n350.abyss.lab 192.168.1.120
+ip host n351.abyss.lab 192.168.1.121
+[Kip host n352.abyss.lab 192.168.1.122
+ip host n353.abyss.lab 192.168.1.123
+ip host n354.abyss.lab 192.168.1.124
+[Kip host n355.abyss.lab 192.168.1.125
+ip host n356.abyss.lab 192.168.1.126
+ip host n357.abyss.lab 192.168.1.127
+[Kip host n358.abyss.lab 192.168.1.128
+ip host n359.abyss.lab 192.168.1.129
+ip host n360.abyss.lab 192.168.1.130
+[Kip host n361.abyss.lab 192.168.1.131
+ip host n362.abyss.lab 192.168.1.132
+ip host n363.abyss.lab 192.168.1.133
+[Kip host n364.abyss.lab 192.168.1.134
+ip host n365.abyss.lab 192.168.1.135
+ip host n366.abyss.lab 192.168.1.136
+[Kip host n367.abyss.lab 192.168.1.137
+ip host n368.abyss.lab 192.168.1.138
+ip host n369.abyss.lab 192.168.1.139
+[Kip host n370.abyss.lab 192.168.1.140
+ip host n371.abyss.lab 192.168.1.141
+ip host n372.abyss.lab 192.168.1.142
+[Kip host n373.abyss.lab 192.168.1.143
+ip host n374.abyss.lab 192.168.1.144
+ip host n375.abyss.lab 192.168.1.145
+[Kip host n376.abyss.lab 192.168.1.146
+ip host n377.abyss.lab 192.168.1.147
+ip host n378.abyss.lab 192.168.1.148
+[Kip host n379.abyss.lab 192.168.1.149
+ip host n380.abyss.lab 192.168.1.150
+ip host n381.abyss.lab 192.168.1.151
+[Kip host n382.abyss.lab 192.168.1.152
+ip host n383.abyss.lab 192.168.1.153
+ip host n384.abyss.lab 192.168.1.154
+[Kip host n385.abyss.lab 192.168.1.155
+ip host n386.abyss.lab 192.168.1.156
+ip host n387.abyss.lab 192.168.1.157
+[Kip host n388.abyss.lab 192.168.1.158
+ip host n389.abyss.lab 192.168.1.159
+ip host n390.abyss.lab 192.168.1.160
+[Kip host n391.abyss.lab 192.168.1.161
+ip host n392.abyss.lab 192.168.1.162
+ip host n393.abyss.lab 192.168.1.163
+[Kip host n394.abyss.lab 192.168.1.164
+ip host n395.abyss.lab 192.168.1.165
+ip host n396.abyss.lab 192.168.1.166
+[Kip host n397.abyss.lab 192.168.1.167
+ip host n398.abyss.lab 192.168.1.168
+ip host n399.abyss.lab 192.168.1.169
+[Kip policy VPN
+    permit global multigroup
+!
+[Kip policy NO-VPN
+!
+ip route 203.0.113.0/24 ISP
+[Kip route 198.51.100.0/24 Proxy0
+!
+ip hotspot
+[K    policy Home VPN
+    policy Bridge2 NO-VPN
+    host aa:bb:cc:00:00:00 permit
+[K    host aa:bb:cc:00:00:01 policy VPN
+    host aa:bb:cc:00:00:02 policy NO-VPN
+    host aa:bb:cc:00:00:03 permit
+[K    host aa:bb:cc:00:00:04 policy VPN
+    host aa:bb:cc:00:00:05 policy NO-VPN
+    host aa:bb:cc:00:00:06 permit
+[K    host aa:bb:cc:00:00:07 policy VPN
+    host aa:bb:cc:00:00:08 policy NO-VPN
+    host aa:bb:cc:00:00:09 permit
+[K    host aa:bb:cc:00:00:0a policy VPN
+    host aa:bb:cc:00:00:0b policy NO-VPN
+    host aa:bb:cc:00:00:0c permit
+[K    host aa:bb:cc:00:00:0d policy VPN
+    host aa:bb:cc:00:00:0e policy NO-VPN
+    host aa:bb:cc:00:00:0f permit
+[K    host aa:bb:cc:00:01:00 policy VPN
+    host aa:bb:cc:00:01:01 policy NO-VPN
+    host aa:bb:cc:00:01:02 permit
+[K    host aa:bb:cc:00:01:03 policy VPN
+    host aa:bb:cc:00:01:04 policy NO-VPN
+    host aa:bb:cc:00:01:05 permit
+[K    host aa:bb:cc:00:01:06 policy VPN
+    host aa:bb:cc:00:01:07 policy NO-VPN
+    host aa:bb:cc:00:01:08 permit
+[K    host aa:bb:cc:00:01:09 policy VPN
+    host aa:bb:cc:00:01:0a policy NO-VPN
+    host aa:bb:cc:00:01:0b permit
+[K    host aa:bb:cc:00:01:0c policy VPN
+    host aa:bb:cc:00:01:0d policy NO-VPN
+    host aa:bb:cc:00:01:0e permit
+[K    host aa:bb:cc:00:01:0f policy VPN
+    host aa:bb:cc:00:02:00 policy NO-VPN
+    host aa:bb:cc:00:02:01 permit
+[K    host aa:bb:cc:00:02:02 policy VPN
+    host aa:bb:cc:00:02:03 policy NO-VPN
+    host aa:bb:cc:00:02:04 permit
+[K    host aa:bb:cc:00:02:05 policy VPN
+    host aa:bb:cc:00:02:06 policy NO-VPN
+    host aa:bb:cc:00:02:07 permit
+[K    host aa:bb:cc:00:02:08 policy VPN
+    host aa:bb:cc:00:02:09 policy NO-VPN
+    host aa:bb:cc:00:02:0a permit
+[K    host aa:bb:cc:00:02:0b policy VPN
+    host aa:bb:cc:00:02:0c policy NO-VPN
+    host aa:bb:cc:00:02:0d permit
+[K    host aa:bb:cc:00:02:0e policy VPN
+    host aa:bb:cc:00:02:0f policy NO-VPN
+    host aa:bb:cc:00:03:00 permit
+[K    host aa:bb:cc:00:03:01 policy VPN
+    host aa:bb:cc:00:03:02 policy NO-VPN
+    host aa:bb:cc:00:03:03 permit
+[K    host aa:bb:cc:00:03:04 policy VPN
+    host aa:bb:cc:00:03:05 policy NO-VPN
+    host aa:bb:cc:00:03:06 permit
+[K    host aa:bb:cc:00:03:07 policy VPN
+    host aa:bb:cc:00:03:08 policy NO-VPN
+    host aa:bb:cc:00:03:09 permit
+[K    host aa:bb:cc:00:03:0a policy VPN
+    host aa:bb:cc:00:03:0b policy NO-VPN
+    host aa:bb:cc:00:03:0c permit
+[K    host aa:bb:cc:00:03:0d policy VPN
+    host aa:bb:cc:00:03:0e policy NO-VPN
+    host aa:bb:cc:00:03:0f permit
+[K    host aa:bb:cc:00:04:00 policy VPN
+    host aa:bb:cc:00:04:01 policy NO-VPN
+    host aa:bb:cc:00:04:02 permit
+[K    host aa:bb:cc:00:04:03 policy VPN
+    host aa:bb:cc:00:04:04 policy NO-VPN
+    host aa:bb:cc:00:04:05 permit
+[K    host aa:bb:cc:00:04:06 policy VPN
+    host aa:bb:cc:00:04:07 policy NO-VPN
+    host aa:bb:cc:00:04:08 permit
+[K    host aa:bb:cc:00:04:09 policy VPN
+    host aa:bb:cc:00:04:0a policy NO-VPN
+    host aa:bb:cc:00:04:0b permit
+[K    host aa:bb:cc:00:04:0c policy VPN
+    host aa:bb:cc:00:04:0d policy NO-VPN
+    host aa:bb:cc:00:04:0e permit
+[K    host aa:bb:cc:00:04:0f policy VPN
+    host aa:bb:cc:00:05:00 policy NO-VPN
+    host aa:bb:cc:00:05:01 permit
+[K    host aa:bb:cc:00:05:02 policy VPN
+    host aa:bb:cc:00:05:03 policy NO-VPN
+    host aa:bb:cc:00:05:04 permit
+[K    host aa:bb:cc:00:05:05 policy VPN
+    host aa:bb:cc:00:05:06 policy NO-VPN
+    host aa:bb:cc:00:05:07 permit
+[K    host aa:bb:cc:00:05:08 policy VPN
+    host aa:bb:cc:00:05:09 policy NO-VPN
+    host aa:bb:cc:00:05:0a permit
+[K    host aa:bb:cc:00:05:0b policy VPN
+    host aa:bb:cc:00:05:0c policy NO-VPN
+    host aa:bb:cc:00:05:0d permit
+[K    host aa:bb:cc:00:05:0e policy VPN
+    host aa:bb:cc:00:05:0f policy NO-VPN
+    host aa:bb:cc:00:06:00 permit
+[K    host aa:bb:cc:00:06:01 policy VPN
+    host aa:bb:cc:00:06:02 policy NO-VPN
+    host aa:bb:cc:00:06:03 permit
+[K    host aa:bb:cc:00:06:04 policy VPN
+    host aa:bb:cc:00:06:05 policy NO-VPN
+    host aa:bb:cc:00:06:06 permit
+[K    host aa:bb:cc:00:06:07 policy VPN
+    host aa:bb:cc:00:06:08 policy NO-VPN
+    host aa:bb:cc:00:06:09 permit
+[K    host aa:bb:cc:00:06:0a policy VPN
+    host aa:bb:cc:00:06:0b policy NO-VPN
+    host aa:bb:cc:00:06:0c permit
+[K    host aa:bb:cc:00:06:0d policy VPN
+    host aa:bb:cc:00:06:0e policy NO-VPN
+    host aa:bb:cc:00:06:0f permit
+[K    host aa:bb:cc:00:07:00 policy VPN
+    host aa:bb:cc:00:07:01 policy NO-VPN
+    host aa:bb:cc:00:07:02 permit
+[K    host aa:bb:cc:00:07:03 policy VPN
+    host aa:bb:cc:00:07:04 policy NO-VPN
+    host aa:bb:cc:00:07:05 permit
+[K    host aa:bb:cc:00:07:06 policy VPN
+    host aa:bb:cc:00:07:07 policy NO-VPN
+    host aa:bb:cc:00:07:08 permit
+[K    host aa:bb:cc:00:07:09 policy VPN
+    host aa:bb:cc:00:07:0a policy NO-VPN
+    host aa:bb:cc:00:07:0b permit
+[K    host aa:bb:cc:00:07:0c policy VPN
+    host aa:bb:cc:00:07:0d policy NO-VPN
+    host aa:bb:cc:00:07:0e permit
+[K    host aa:bb:cc:00:07:0f policy VPN
+    host aa:bb:cc:00:08:00 policy NO-VPN
+    host aa:bb:cc:00:08:01 permit
+[K    host aa:bb:cc:00:08:02 policy VPN
+    host aa:bb:cc:00:08:03 policy NO-VPN
+    host aa:bb:cc:00:08:04 permit
+[K    host aa:bb:cc:00:08:05 policy VPN
+    host aa:bb:cc:00:08:06 policy NO-VPN
+    host aa:bb:cc:00:08:07 permit
+[K    host aa:bb:cc:00:08:08 policy VPN
+    host aa:bb:cc:00:08:09 policy NO-VPN
+    host aa:bb:cc:00:08:0a permit
+[K    host aa:bb:cc:00:08:0b policy VPN
+    host aa:bb:cc:00:08:0c policy NO-VPN
+    host aa:bb:cc:00:08:0d permit
+[K    host aa:bb:cc:00:08:0e policy VPN
+    host aa:bb:cc:00:08:0f policy NO-VPN
+    host aa:bb:cc:00:09:00 permit
+[K    host aa:bb:cc:00:09:01 policy VPN
+    host aa:bb:cc:00:09:02 policy NO-VPN
+    host aa:bb:cc:00:09:03 permit
+[K    host aa:bb:cc:00:09:04 policy VPN
+    host aa:bb:cc:00:09:05 policy NO-VPN
+    host aa:bb:cc:00:09:06 permit
+[K    host aa:bb:cc:00:09:07 policy VPN
+    host aa:bb:cc:00:09:08 policy NO-VPN
+    host aa:bb:cc:00:09:09 permit
+[K    host aa:bb:cc:00:09:0a policy VPN
+    host aa:bb:cc:00:09:0b policy NO-VPN
+    host aa:bb:cc:00:09:0c permit
+[K    host aa:bb:cc:00:09:0d policy VPN
+    host aa:bb:cc:00:09:0e policy NO-VPN
+    host aa:bb:cc:00:09:0f permit
+[K    host aa:bb:cc:00:0a:00 policy VPN
+    host aa:bb:cc:00:0a:01 policy NO-VPN
+    host aa:bb:cc:00:0a:02 permit
+[K    host aa:bb:cc:00:0a:03 policy VPN
+    host aa:bb:cc:00:0a:04 policy NO-VPN
+    host aa:bb:cc:00:0a:05 permit
+[K    host aa:bb:cc:00:0a:06 policy VPN
+    host aa:bb:cc:00:0a:07 policy NO-VPN
+    host aa:bb:cc:00:0a:08 permit
+[K    host aa:bb:cc:00:0a:09 policy VPN
+    host aa:bb:cc:00:0a:0a policy NO-VPN
+    host aa:bb:cc:00:0a:0b permit
+[K    host aa:bb:cc:00:0a:0c policy VPN
+    host aa:bb:cc:00:0a:0d policy NO-VPN
+    host aa:bb:cc:00:0a:0e permit
+[K    host aa:bb:cc:00:0a:0f policy VPN
+    host aa:bb:cc:00:0b:00 policy NO-VPN
+    host aa:bb:cc:00:0b:01 permit
+[K    host aa:bb:cc:00:0b:02 policy VPN
+    host aa:bb:cc:00:0b:03 policy NO-VPN
+    host aa:bb:cc:00:0b:04 permit
+[K    host aa:bb:cc:00:0b:05 policy VPN
+    host aa:bb:cc:00:0b:06 policy NO-VPN
+    host aa:bb:cc:00:0b:07 permit
+[K    host aa:bb:cc:00:0b:08 policy VPN
+    host aa:bb:cc:00:0b:09 policy NO-VPN
+    host aa:bb:cc:00:0b:0a permit
+[K    host aa:bb:cc:00:0b:0b policy VPN
+    host aa:bb:cc:00:0b:0c policy NO-VPN
+    host aa:bb:cc:00:0b:0d permit
+[K    host aa:bb:cc:00:0b:0e policy VPN
+    host aa:bb:cc:00:0b:0f policy NO-VPN
+    host aa:bb:cc:00:0c:00 permit
+[K    host aa:bb:cc:00:0c:01 policy VPN
+    host aa:bb:cc:00:0c:02 policy NO-VPN
+    host aa:bb:cc:00:0c:03 permit
+[K    host aa:bb:cc:00:0c:04 policy VPN
+    host aa:bb:cc:00:0c:05 policy NO-VPN
+    host aa:bb:cc:00:0c:06 permit
+[K    host aa:bb:cc:00:0c:07 policy VPN
+    host aa:bb:cc:00:0c:08 policy NO-VPN
+    host aa:bb:cc:00:0c:09 permit
+[K    host aa:bb:cc:00:0c:0a policy VPN
+    host aa:bb:cc:00:0c:0b policy NO-VPN
+    host aa:bb:cc:00:0c:0c permit
+[K    host aa:bb:cc:00:0c:0d policy VPN
+    host aa:bb:cc:00:0c:0e policy NO-VPN
+    host aa:bb:cc:00:0c:0f permit
+[K    host aa:bb:cc:00:0d:00 policy VPN
+    host aa:bb:cc:00:0d:01 policy NO-VPN
+    host aa:bb:cc:00:0d:02 permit
+[K    host aa:bb:cc:00:0d:03 policy VPN
+    host aa:bb:cc:00:0d:04 policy NO-VPN
+    host aa:bb:cc:00:0d:05 permit
+[K    host aa:bb:cc:00:0d:06 policy VPN
+    host aa:bb:cc:00:0d:07 policy NO-VPN
+    host aa:bb:cc:00:0d:08 permit
+[K    host aa:bb:cc:00:0d:09 policy VPN
+    host aa:bb:cc:00:0d:0a policy NO-VPN
+    host aa:bb:cc:00:0d:0b permit
+[K    host aa:bb:cc:00:0d:0c policy VPN
+    host aa:bb:cc:00:0d:0d policy NO-VPN
+    host aa:bb:cc:00:0d:0e permit
+[K    host aa:bb:cc:00:0d:0f policy VPN
+    host aa:bb:cc:00:0e:00 policy NO-VPN
+    host aa:bb:cc:00:0e:01 permit
+[K    host aa:bb:cc:00:0e:02 policy VPN
+    host aa:bb:cc:00:0e:03 policy NO-VPN
+    host aa:bb:cc:00:0e:04 permit
+[K    host aa:bb:cc:00:0e:05 policy VPN
+    host aa:bb:cc:00:0e:06 policy NO-VPN
+    host aa:bb:cc:00:0e:07 permit
+[K    host aa:bb:cc:00:0e:08 policy VPN
+    host aa:bb:cc:00:0e:09 policy NO-VPN
+    host aa:bb:cc:00:0e:0a permit
+[K    host aa:bb:cc:00:0e:0b policy VPN
+    host aa:bb:cc:00:0e:0c policy NO-VPN
+    host aa:bb:cc:00:0e:0d permit
+[K    host aa:bb:cc:00:0e:0e policy VPN
+    host aa:bb:cc:00:0e:0f policy NO-VPN
+    host aa:bb:cc:00:0f:00 permit
+[K    host aa:bb:cc:00:0f:01 policy VPN
+    host aa:bb:cc:00:0f:02 policy NO-VPN
+    host aa:bb:cc:00:0f:03 permit
+[K    host aa:bb:cc:00:0f:04 policy VPN
+    host aa:bb:cc:00:0f:05 policy NO-VPN
+    host aa:bb:cc:00:0f:06 permit
+[K    host aa:bb:cc:00:0f:07 policy VPN
+    host aa:bb:cc:00:0f:08 policy NO-VPN
+    host aa:bb:cc:00:0f:09 permit
+[K    host aa:bb:cc:00:0f:0a policy VPN
+    host aa:bb:cc:00:0f:0b policy NO-VPN
+    host aa:bb:cc:00:0f:0c permit
+[K    host aa:bb:cc:00:0f:0d policy VPN
+    host aa:bb:cc:00:0f:0e policy NO-VPN
+    host aa:bb:cc:00:0f:0f permit
+[K    host aa:bb:cc:01:00:00 policy VPN
+    host aa:bb:cc:01:00:01 policy NO-VPN
+    host aa:bb:cc:01:00:02 permit
+[K    host aa:bb:cc:01:00:03 policy VPN
+    host aa:bb:cc:01:00:04 policy NO-VPN
+    host aa:bb:cc:01:00:05 permit
+[K    host aa:bb:cc:01:00:06 policy VPN
+    host aa:bb:cc:01:00:07 policy NO-VPN
+    host aa:bb:cc:01:00:08 permit
+[K    host aa:bb:cc:01:00:09 policy VPN
+    host aa:bb:cc:01:00:0a policy NO-VPN
+    host aa:bb:cc:01:00:0b permit
+[K    host aa:bb:cc:01:00:0c policy VPN
+    host aa:bb:cc:01:00:0d policy NO-VPN
+    host aa:bb:cc:01:00:0e permit
+[K    host aa:bb:cc:01:00:0f policy VPN
+    host aa:bb:cc:01:01:00 policy NO-VPN
+    host aa:bb:cc:01:01:01 permit
+[K    host aa:bb:cc:01:01:02 policy VPN
+    host aa:bb:cc:01:01:03 policy NO-VPN
+    host aa:bb:cc:01:01:04 permit
+[K    host aa:bb:cc:01:01:05 policy VPN
+    host aa:bb:cc:01:01:06 policy NO-VPN
+    host aa:bb:cc:01:01:07 permit
+[K    host aa:bb:cc:01:01:08 policy VPN
+    host aa:bb:cc:01:01:09 policy NO-VPN
+    host aa:bb:cc:01:01:0a permit
+[K    host aa:bb:cc:01:01:0b policy VPN
+    host aa:bb:cc:01:01:0c policy NO-VPN
+    host aa:bb:cc:01:01:0d permit
+[K    host aa:bb:cc:01:01:0e policy VPN
+    host aa:bb:cc:01:01:0f policy NO-VPN
+    host aa:bb:cc:01:02:00 permit
+[K    host aa:bb:cc:01:02:01 policy VPN
+    host aa:bb:cc:01:02:02 policy NO-VPN
+    host aa:bb:cc:01:02:03 permit
+[K    host aa:bb:cc:01:02:04 policy VPN
+    host aa:bb:cc:01:02:05 policy NO-VPN
+    host aa:bb:cc:01:02:06 permit
+[K    host aa:bb:cc:01:02:07 policy VPN
+    host aa:bb:cc:01:02:08 policy NO-VPN
+    host aa:bb:cc:01:02:09 permit
+[K    host aa:bb:cc:01:02:0a policy VPN
+    host aa:bb:cc:01:02:0b policy NO-VPN
+    host aa:bb:cc:dd:ee:ff policy VPN

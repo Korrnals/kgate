@@ -6,6 +6,30 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **daemon: ndmc reads now run over a local PTY (kgate-002).** The daemon
+  called `/bin/ndmc` through `sh` + pipes, so it inherited the non-tty clip
+  documented in 1.8.2 for the deploy path: as the running-config grows, the
+  tail of `show running-config` — where the `ip hotspot` bindings live —
+  is lost, blinding the policy overlay (the daemon half of the kgate-001
+  report). Every ndmc call from the daemon now runs under a fresh local
+  PTY (creack/pty, 200x500 dumb profile, same as deploy), with ANSI/CR
+  stripped before return. SIGHUP containment: the child is a short-lived
+  ndmc show/config verb, waited for BEFORE the master closes; no ndm
+  call site starts processes (sing-box is spawned by the proc manager on
+  plain pipes). Failure surface is unchanged (`ERR(...)` prefix contracts
+  ndmExecFailed/ndmcFailed), and a hung ndmc now fails loud at a 30s cap
+  instead of stalling the supervisor forever — the master closes first
+  (kernel hangup), SIGKILL reaping after a grace. The master is read in
+  O_NONBLOCK via raw syscalls: `/dev/ptmx` does not reach the runtime
+  poller (probe 2026-11-14: SetReadDeadline is accepted and ignored,
+  Close does not interrupt a blocked read). New read-only diagnostic
+  `kgate ndm "<verb>"` exercises exactly the daemon's reading path —
+  `kgate ndm "show running-config" | wc -c` is the live clip probe.
+  Golden fixture: a 30.8 KB PTY-rendered running-config (CRLF + erase-to-EOL,
+  shapes from the field captures) pinned as testdata — 201 hotspot
+  bindings, tail markers included, must parse whole (kgate-001 regression).
+
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path

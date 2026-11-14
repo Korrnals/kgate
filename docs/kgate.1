@@ -20,6 +20,13 @@ x/crypto/ssh, host\-ключи TOFU), mTLS\-клиент, самобновлен
 демон на роутере: супервизор sing\-box, восстановление dns\-правил,
 auto\-подъём туннеля (boot_autoup), mTLS API на \fB:9443\fR.
 .TP
+.B ndm \fI<verb>\fR
+прямой ndmc\-вызов через PTY\-читалку демона (read\-only диагностика
+чтения): показывает, что реально видят парсеры — полный неклипнутый вывод
+show\-верб, ANSI/CR вычищены (kgate\-002: без tty ndmc клипует хвост
+\fIshow running\-config\fR при росте конфига).
+Пример: \fBkgate ndm "show running\-config" | wc \-c\fR.
+.TP
 .B config create
 создать конфиг из встроенного шаблона по дефолтному пути
 (\fI~/.kgate/kgate.yaml\fR), открыть редактор \fB$VISUAL\fR/\fB$EDITOR\fR,

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -388,4 +389,41 @@ func TestPolicySetDevice_Idempotent_NoRewrite(t *testing.T) {
 		t.Fatalf("повторный set: already = %v, want true (out=%v)", out["already"], out)
 	}
 	assertCmds(t, fake, []string{"show ip hotspot", "show running-config", "show ip policy"}, "повторный set не должен писать в ndm")
+}
+
+// kgate-002: оверлей на большом running-config (golden-фикстура 30.8 КБ,
+// привязки в хвосте — зоне клипа non-tty ndmc). smart-tv приходит из
+// `show ip hotspot` с ПУСТЫМ policy — заполнить его может только хвост
+// running-config; регрессия kgate-001 (клип) делала ровно это невозможным.
+func TestHotspotTable_LargeRunningConfigOverlay(t *testing.T) {
+	raw, err := os.ReadFile("../policy/testdata/running-config-large.golden")
+	if err != nil {
+		t.Fatalf("golden fixture: %v", err)
+	}
+	d, fake := policyTestDaemon(t)
+	fake.responses["show running-config"] = string(raw)
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		t.Fatalf("hotspotTable: %v", err)
+	}
+	bound := 0
+	smartTV := false
+	for _, h := range tbl.Hosts {
+		if h.Policy != "" {
+			bound++
+		}
+		if h.MAC == "aa:bb:cc:dd:ee:ff" && h.Policy == "VPN" {
+			smartTV = true
+		}
+	}
+	if !smartTV {
+		t.Errorf("smart-tv не получил политику из хвоста running-config (оверлей слеп)")
+	}
+	// bound==2 точно: pixel-phone — своя VPN из show ip hotspot (golden его
+	// MAC не содержит), smart-tv — заполнен оверлеем ИЗ ХВОСТА golden.
+	// Оверлей мапит привязки golden только на хостов живой таблицы (6 шт.) —
+	// полный парсинг 201 привязок pin'уется в policy-тесте golden-фикстуры.
+	if bound != 2 {
+		t.Errorf("bound=%d, want 2 (оверлей замапил не то или не всё)", bound)
+	}
 }

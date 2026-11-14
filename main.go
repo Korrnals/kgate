@@ -309,6 +309,24 @@ func main() {
 		},
 	})
 
+	root.AddCommand(&cobra.Command{
+		Use:     "ndm <verb>",
+		Example: `kgate ndm "show running-config"`,
+		Short:   "прямой ndmc-вызов через PTY-читалку демона (диагностика чтения)",
+		Long: `Выполняет вербу ровно тем путём, которым демон читает ndm
+(локальный /bin/ndmc под PTY, полный неклипнутый вывод, ANSI/CR вычищены).
+Read-only диагностика: показывает, что реально видят парсеры демона
+(kgate-002: без PTY ndmc клипует хвост show running-config).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out, err := daemon.NdmRun(args[0])
+			if out != "" {
+				fmt.Println(out)
+			}
+			return err
+		},
+	})
+
 	deployCmd := &cobra.Command{
 		Use:     "deploy",
 		Aliases: []string{"apply"},

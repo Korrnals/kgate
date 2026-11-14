@@ -128,14 +128,24 @@ func daemonEnv() []string {
 }
 
 func (d *Daemon) ndmc(cmd string) string {
-	// defense-in-depth (wave-1 D6): cmd is interpolated into sh -c "…" with
-	// only double quotes escaped; $ or ` inside cmd would expand in the
-	// router shell. Audited (grep): no legitimate call site passes either,
-	// so the filter refuses instead of attempting partial escaping.
+	// defense-in-depth (wave-1 D6): the filter stays — ndm parses the verb
+	// itself and no legitimate call site passes $/backtick; refusal instead
+	// of partial escaping. kgate-002: the verb now goes to /bin/ndmc as a
+	// DIRECT argv element under a PTY — no shell in between, so the old
+	// quote-escaping into sh -c "…" is gone together with the interpolation
+	// surface.
 	if strings.ContainsAny(cmd, "$`") {
 		return fmt.Sprintf("ERR(ndmc: cmd rejected, '$'/backtick not allowed: %q)", cmd)
 	}
-	return sh(`/bin/ndmc -c "` + strings.ReplaceAll(cmd, `"`, `\"`) + `"`)
+	// PTY обязателен: без tty ndmc клипует вывод (хвост show running-config
+	// теряется при росте конфига — полевой факт 2026-11-12, CHANGELOG 1.8.2;
+	// ssh-нога закрыта deploy'ем, локальная демон-нога — kgate-002).
+	// sh()-совместимая ERR-поверхность — контракты ndmExecFailed/ndmcFailed.
+	out, err := ptyRun(ndmCmd(cmd), ndmcTimeout)
+	if err != nil {
+		return fmt.Sprintf("ERR(%v): %s", err, strings.TrimSpace(out))
+	}
+	return strings.TrimSpace(out)
 }
 
 // ---- process manager ----
