@@ -6,6 +6,30 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **relay: UDP ASSOCIATE terminated as a real SOCKS5 UDP session
+  (kgate-003).** The tolerant relay translated EVERY request — including
+  UDP ASSOCIATE (cmd=3, and the broken ndm client's cmd=5 with dst
+  0.0.0.0:0) — into a TCP CONNECT towards sing-box mixed. sing-box then
+  dialled `tcp 0.0.0.0:0` through the direct outbound and timed out after
+  5s: 143 029 `open connection to 0.0.0.0:0 ... i/o timeout` errors in
+  singbox.log over the kgate-001-dev deploy (staged 13.11 20:02, ~17/min)
+  and dead UDP flows on the LAN. The relay now dispatches the UDP class
+  (cmd=3 with any dst; cmd=5 with any-dst 0.0.0.0:0/"::":0) to a genuine
+  RFC 1928 §7 session: upstream cmd=3 to sing-box (which opens its UDP
+  endpoint instead of dialing), a client-facing UDP socket on the relay
+  host, BND echoed as the address the client itself reached, and a
+  transparent frame pump (RSV/FRAG/ATYP/DST headers pass through
+  untouched; FRAG>0 dropped+logged). Demultiplex by datagram source: the
+  first non-sing-box sender locks the session peer, strangers are
+  dropped. Session ends on control-conn close (RFC: TCP holds the UDP
+  state) or a 2-minute idle. TCP compatibility preserved: cmd=1 and the
+  broken cmd=5 with a REAL target still go to CONNECT (tun2socks).
+  Regression suite over a sing-box mock: cmd=3 and cmd=5/0.0.0.0:0 must
+  reach upstream as cmd=3 (never CONNECT), UDP frame roundtrip client ⇄
+  relay ⇄ sing-box byte-exact, FRAG dropped, cmd=5 with a real dst still
+  CONNECTs.
+
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path
