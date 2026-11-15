@@ -6,6 +6,70 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **relay: UDP ASSOCIATE terminated as a real SOCKS5 UDP session
+  (kgate-003).** The tolerant relay translated EVERY request — including
+  UDP ASSOCIATE (cmd=3, and the broken ndm client's cmd=5 with dst
+  0.0.0.0:0) — into a TCP CONNECT towards sing-box mixed. sing-box then
+  dialled `tcp 0.0.0.0:0` through the direct outbound and timed out after
+  5s: 143 029 `open connection to 0.0.0.0:0 ... i/o timeout` errors in
+  singbox.log over the kgate-001-dev deploy (staged 13.11 20:02, ~17/min)
+  and dead UDP flows on the LAN. The relay now dispatches the UDP class
+  (cmd=3 with any dst; cmd=5 with any-dst 0.0.0.0:0/"::":0) to a genuine
+  RFC 1928 §7 session: upstream cmd=3 to sing-box (which opens its UDP
+  endpoint instead of dialing), a client-facing UDP socket on the relay
+  host, BND echoed as the address the client itself reached, and a
+  transparent frame pump (RSV/FRAG/ATYP/DST headers pass through
+  untouched; FRAG>0 dropped+logged). Demultiplex by datagram source: the
+  first non-sing-box sender locks the session peer, strangers are
+  dropped. Session ends on control-conn close (RFC: TCP holds the UDP
+  state) or a 2-minute idle. TCP compatibility preserved: cmd=1 and the
+  broken cmd=5 with a REAL target still go to CONNECT (tun2socks).
+  Regression suite over a sing-box mock: cmd=3 and cmd=5/0.0.0.0:0 must
+  reach upstream as cmd=3 (never CONNECT), UDP frame roundtrip client ⇄
+  relay ⇄ sing-box byte-exact, FRAG dropped, cmd=5 with a real dst still
+  CONNECTs.
+- **`kgate policy set segment` failed on every real-router resolve
+  (kgate-001).** KeeneticOS 4.x renders `show ip hotspot` as per-association
+  blocks with an EMPTY `interface:` value and the segment identity on
+  `id:`/`name:`/`description:` sub-lines (`id: Bridge0`, `name: Home`,
+  `description: WLAN`). The parser took the empty value as the name, so every
+  `Segment.Name` was `""` and every resolve died — by ndm name («сегмент не
+  найден»), by description (resolved to an empty name, rejected by the bind
+  token guard). The known bug 3de63d9e (declarative policies bypassed the
+  resolver since 1.8.0) is fixed at the root: segment identity is parsed from
+  the sub-lines (ndm name = verb token; bridge id and description are resolve
+  aliases), associations dedup per segment, association `policy:`/`active:`
+  lines attach to their host, and the daemon overlays segment bindings from
+  running-config (`policy <seg> <VPN|NO-VPN>`) exactly as it already did for
+  hosts — the set-segment idempotence check now sees real bindings. A failed
+  resolve is loud: it names the searched target and lists what ndm actually
+  showed. Regression fixtures pin the captured live render.
+>>>>>>> origin/feat/kgate-001-segment-resolve
+- **daemon: ndmc reads now run over a local PTY (kgate-002).** The daemon
+  called `/bin/ndmc` through `sh` + pipes, so it inherited the non-tty clip
+  documented in 1.8.2 for the deploy path: as the running-config grows, the
+  tail of `show running-config` — where the `ip hotspot` bindings live —
+  is lost, blinding the policy overlay (the daemon half of the kgate-001
+  report). Every ndmc call from the daemon now runs under a fresh local
+  PTY (creack/pty, 200x500 dumb profile, same as deploy), with ANSI/CR
+  stripped before return. SIGHUP containment: the child is a short-lived
+  ndmc show/config verb, waited for BEFORE the master closes; no ndm
+  call site starts processes (sing-box is spawned by the proc manager on
+  plain pipes). Failure surface is unchanged (`ERR(...)` prefix contracts
+  ndmExecFailed/ndmcFailed), and a hung ndmc now fails loud at a 30s cap
+  instead of stalling the supervisor forever — the master closes first
+  (kernel hangup), SIGKILL reaping after a grace. The master is read in
+  O_NONBLOCK via raw syscalls: `/dev/ptmx` does not reach the runtime
+  poller (probe 2026-11-14: SetReadDeadline is accepted and ignored,
+  Close does not interrupt a blocked read). New read-only diagnostic
+  `kgate ndm "<verb>"` exercises exactly the daemon's reading path —
+  `kgate ndm "show running-config" | wc -c` is the live clip probe.
+  Golden fixture: a 30.8 KB PTY-rendered running-config (CRLF + erase-to-EOL,
+  shapes from the field captures) pinned as testdata — 201 hotspot
+  bindings, tail markers included, must parse whole (kgate-001 regression).
+>>>>>>> origin/feat/kgate-002-pty-reader
+
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path

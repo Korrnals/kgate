@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -169,6 +170,124 @@ func TestPolicySetSegment_ByName(t *testing.T) {
 		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Bridge0 NO-VPN", "system configuration save",
 		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Bridge1 VPN", "system configuration save",
 	}, "segment")
+}
+
+// policyFixtureHotspotAssociation mirrors the live 4.x association render
+// (kgate-001, structure verbatim from the 13.11 capture, values sanitized):
+// `interface:` empty with identity on id:/name:/description: sub-lines.
+const policyFixtureHotspotAssociation = `
+             host:
+                  mac: aa:bb:cc:dd:ee:01
+                   ip: 192.168.1.51
+             hostname: tv-box
+                 name: tv-box
+
+            interface:
+                       id: Bridge0
+                     name: Home
+              description: WLAN
+
+           registered: yes
+               policy: VPN
+               active: yes
+
+             host:
+                  mac: aa:bb:cc:dd:ee:02
+                   ip: 192.168.3.11
+             hostname: device-1
+                 name: device-1
+
+            interface:
+                       id: Bridge2
+                     name: Bridge2
+              description: SMART
+
+           registered: yes
+               policy: NO-VPN
+               active: yes
+`
+
+// policyFixtureRunCfgSegmentBinds: the running-config `ip hotspot` block with
+// segment binds (the daemon's overlay source) — ndm names, not descriptions.
+const policyFixtureRunCfgSegmentBinds = `ip hotspot
+    policy Home VPN
+    policy Bridge2 NO-VPN
+    host aa:bb:cc:dd:ee:01 policy NO-VPN
+!
+
+interface Bridge0
+!
+
+ip policy VPN
+!
+ip policy NO-VPN
+!`
+
+func TestPolicySetSegment_AssociationRender(t *testing.T) {
+	d, fake := policyTestDaemon(t)
+	fake.responses = map[string]string{
+		"show ip hotspot":     policyFixtureHotspotAssociation,
+		"show running-config": policyFixtureRunCfgSegmentBinds,
+		"show ip policy":      policyFixturePolicies,
+	}
+	// idempotence from the running-config overlay: Home already VPN —
+	// the three shows only, no bind verb, no flash save
+	out, err := d.policySetSegment("Home", "VPN")
+	if err != nil {
+		t.Fatalf("set segment already-bound: %v", err)
+	}
+	if out["already"] != true || out["ndmc"] != "(уже привязан — ndmc-записей не было)" {
+		t.Errorf("already-path: already=%v ndmc=%v (overlay idempotence failed)", out["already"], out["ndmc"])
+	}
+	// by ndm name, divergent bind: the verb carries the ndm name, NOT the
+	// bridge id, NOT the description
+	out, err = d.policySetSegment("Home", "NO-VPN")
+	if err != nil {
+		t.Fatalf("set segment by ndm name: %v", err)
+	}
+	if out["ndmc"] != "ip hotspot policy Home NO-VPN" {
+		t.Errorf("ndmc = %v (want the ndm-name verb form)", out["ndmc"])
+	}
+	// unbind by bridge-id alias: resolves to the ndm name for the verb;
+	// truth table 08.11: the prefix no-form
+	out, err = d.policySetSegment("bridge0", "none")
+	if err != nil {
+		t.Fatalf("unbind segment by id alias: %v", err)
+	}
+	if out["ndmc"] != "no ip hotspot policy Home" {
+		t.Errorf("ndmc = %v", out["ndmc"])
+	}
+	// second alias surface: by description, already bound via overlay
+	out, err = d.policySetSegment("SMART", "NO-VPN")
+	if err != nil {
+		t.Fatalf("set segment by description alias: %v", err)
+	}
+	if out["already"] != true {
+		t.Errorf("already = %v (overlay idempotence failed)", out["already"])
+	}
+	assertCmds(t, fake, []string{
+		"show ip hotspot", "show running-config", "show ip policy",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Home NO-VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "no ip hotspot policy Home", "system configuration save", // none → policyExists skipped
+		"show ip hotspot", "show running-config", "show ip policy",
+	}, "segment-association")
+}
+
+// kgate-001 regression: the OLD parser produced Segment.Name == "" on the
+// association render — set-segment failed with «сегмент ... не найден» (by
+// name) or «segment: "" содержит недопустимые символы» (by description). The
+// miss error must now be LOUD about what ndm actually showed.
+func TestPolicySetSegment_UnknownSegment_LoudMiss(t *testing.T) {
+	d, _ := policyTestDaemon(t)
+	_, err := d.policySetSegment("ghost", "VPN")
+	if err == nil {
+		t.Fatal("unknown segment must fail")
+	}
+	for _, want := range []string{"ghost", "не найден", "ndm показал"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("loud miss must contain %q, got: %v", want, err)
+		}
+	}
 }
 
 func TestPolicyAllVPN_ActiveOnly_SkipsBound(t *testing.T) {
@@ -388,4 +507,41 @@ func TestPolicySetDevice_Idempotent_NoRewrite(t *testing.T) {
 		t.Fatalf("повторный set: already = %v, want true (out=%v)", out["already"], out)
 	}
 	assertCmds(t, fake, []string{"show ip hotspot", "show running-config", "show ip policy"}, "повторный set не должен писать в ndm")
+}
+
+// kgate-002: оверлей на большом running-config (golden-фикстура 30.8 КБ,
+// привязки в хвосте — зоне клипа non-tty ndmc). smart-tv приходит из
+// `show ip hotspot` с ПУСТЫМ policy — заполнить его может только хвост
+// running-config; регрессия kgate-001 (клип) делала ровно это невозможным.
+func TestHotspotTable_LargeRunningConfigOverlay(t *testing.T) {
+	raw, err := os.ReadFile("../policy/testdata/running-config-large.golden")
+	if err != nil {
+		t.Fatalf("golden fixture: %v", err)
+	}
+	d, fake := policyTestDaemon(t)
+	fake.responses["show running-config"] = string(raw)
+	tbl, err := d.hotspotTable()
+	if err != nil {
+		t.Fatalf("hotspotTable: %v", err)
+	}
+	bound := 0
+	smartTV := false
+	for _, h := range tbl.Hosts {
+		if h.Policy != "" {
+			bound++
+		}
+		if h.MAC == "aa:bb:cc:dd:ee:ff" && h.Policy == "VPN" {
+			smartTV = true
+		}
+	}
+	if !smartTV {
+		t.Errorf("smart-tv не получил политику из хвоста running-config (оверлей слеп)")
+	}
+	// bound==2 точно: pixel-phone — своя VPN из show ip hotspot (golden его
+	// MAC не содержит), smart-tv — заполнен оверлеем ИЗ ХВОСТА golden.
+	// Оверлей мапит привязки golden только на хостов живой таблицы (6 шт.) —
+	// полный парсинг 201 привязок pin'уется в policy-тесте golden-фикстуры.
+	if bound != 2 {
+		t.Errorf("bound=%d, want 2 (оверлей замапил не то или не всё)", bound)
+	}
 }

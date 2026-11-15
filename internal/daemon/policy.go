@@ -37,11 +37,12 @@ func isClientPolicyErr(err error) bool {
 // surface the error as a 500.
 //
 // Bindings come from `show running-config` (field E2E 2026-11-11: the
-// firmware renders `policy:` EMPTY in the global `show ip hotspot`, so the
-// table alone can only ever show "unbound" — the config carries
-// `host <MAC> policy <NAME>` for every binding and is the source of truth).
-// The overlay fills Host.Policy, which drives the list view, the active
-// column and the set-path idempotence check.
+// firmware renders `policy:` EMPTY in the global `show ip hotspot`; on the
+// 13.11 association render the per-association policy: is effective/display
+// state, not the binding — either way the config is the source of truth).
+// The overlay fills Host.Policy and — since kgate-001 — Segment.Policy
+// (`policy <seg> <VPN|NO-VPN>` lines), which drive the list views, the
+// active column and the set-path idempotence checks.
 func (d *Daemon) hotspotTable() (policy.Table, error) {
 	out := d.ndm(policy.ShowHotspotCmd)
 	if ndmExecFailed(out) { // wave-2 F5: SHOW-путь — только exec-сбой, не вербальный матч
@@ -57,6 +58,12 @@ func (d *Daemon) hotspotTable() (policy.Table, error) {
 	for i := range tbl.Hosts {
 		if p, ok := bindings[strings.ToLower(tbl.Hosts[i].MAC)]; ok {
 			tbl.Hosts[i].Policy = p
+		}
+	}
+	segBinds := policy.ParseSegmentBindings(cfg)
+	for i := range tbl.Segments {
+		if p, ok := segBinds[tbl.Segments[i].Name]; ok {
+			tbl.Segments[i].Policy = p
 		}
 	}
 	return tbl, nil
@@ -148,16 +155,23 @@ func hostViews(tbl policy.Table) []hostView {
 
 func segmentViews(tbl policy.Table) []segmentView {
 	counts := map[string]int{}
+	active := map[string]bool{}
 	for _, h := range tbl.Hosts {
 		if h.Segment != "" {
 			counts[h.Segment]++
+			if h.Active {
+				active[h.Segment] = true
+			}
 		}
 	}
 	out := make([]segmentView, 0, len(tbl.Segments))
 	for _, s := range tbl.Segments {
+		// association render (kgate-001) carries no segment-level active:
+		// line — the segment is honest-active when any of its hosts is.
+		act := s.Active || active[s.Name]
 		out = append(out, segmentView{
 			Name: s.Name, Description: s.Description,
-			Policy: s.Policy, Active: s.Active, Hosts: counts[s.Name],
+			Policy: s.Policy, Active: act, Hosts: counts[s.Name],
 		})
 	}
 	return out
