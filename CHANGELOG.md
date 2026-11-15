@@ -29,6 +29,23 @@ follows [Semantic Versioning](https://semver.org/).
   reach upstream as cmd=3 (never CONNECT), UDP frame roundtrip client ⇄
   relay ⇄ sing-box byte-exact, FRAG dropped, cmd=5 with a real dst still
   CONNECTs.
+- **`kgate policy set segment` failed on every real-router resolve
+  (kgate-001).** KeeneticOS 4.x renders `show ip hotspot` as per-association
+  blocks with an EMPTY `interface:` value and the segment identity on
+  `id:`/`name:`/`description:` sub-lines (`id: Bridge0`, `name: Home`,
+  `description: WLAN`). The parser took the empty value as the name, so every
+  `Segment.Name` was `""` and every resolve died — by ndm name («сегмент не
+  найден»), by description (resolved to an empty name, rejected by the bind
+  token guard). The known bug 3de63d9e (declarative policies bypassed the
+  resolver since 1.8.0) is fixed at the root: segment identity is parsed from
+  the sub-lines (ndm name = verb token; bridge id and description are resolve
+  aliases), associations dedup per segment, association `policy:`/`active:`
+  lines attach to their host, and the daemon overlays segment bindings from
+  running-config (`policy <seg> <VPN|NO-VPN>`) exactly as it already did for
+  hosts — the set-segment idempotence check now sees real bindings. A failed
+  resolve is loud: it names the searched target and lists what ndm actually
+  showed. Regression fixtures pin the captured live render.
+>>>>>>> origin/feat/kgate-001-segment-resolve
 
 ## [1.6.0] - 2026-11-10
 
