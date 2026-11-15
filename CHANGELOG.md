@@ -45,7 +45,6 @@ follows [Semantic Versioning](https://semver.org/).
   hosts — the set-segment idempotence check now sees real bindings. A failed
   resolve is loud: it names the searched target and lists what ndm actually
   showed. Regression fixtures pin the captured live render.
->>>>>>> origin/feat/kgate-001-segment-resolve
 - **daemon: ndmc reads now run over a local PTY (kgate-002).** The daemon
   called `/bin/ndmc` through `sh` + pipes, so it inherited the non-tty clip
   documented in 1.8.2 for the deploy path: as the running-config grows, the
@@ -68,7 +67,6 @@ follows [Semantic Versioning](https://semver.org/).
   Golden fixture: a 30.8 KB PTY-rendered running-config (CRLF + erase-to-EOL,
   shapes from the field captures) pinned as testdata — 201 hotspot
   bindings, tail markers included, must parse whole (kgate-001 regression).
->>>>>>> origin/feat/kgate-002-pty-reader
 
 ## [1.6.0] - 2026-11-10
 
