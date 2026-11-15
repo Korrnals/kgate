@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-11-15
+
 ### Fixed
 - **relay: UDP ASSOCIATE terminated as a real SOCKS5 UDP session
   (kgate-003).** The tolerant relay translated EVERY request — including
