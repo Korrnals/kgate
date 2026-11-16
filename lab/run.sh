@@ -9,6 +9,10 @@
 #   migration — НАСТОЯЩИЙ examples/ndm-commands.sh под busybox sh с mock-ndmc:
 #               таблица решений back-compat миграции (ре-бинд legacy-привязок
 #               на NO-VPN, удаление объектов, идемпотентность второго прогона).
+#   udp       — UDP data-path матрица kgate-004 НА ХОСТЕ (реальный sing-box
+#               1.14.x из lab/work, relay in-process): ndm UDP-over-TCP,
+#               grace control-conn t+0, дропы, dead-upstream, fd-гигиена,
+#               фаззинг, udp-smoke; сигнатурный ассерт «ноль dial 0.0.0.0».
 #   install   — scripts/install.sh --platform=openwrt в чистом контейнере:
 #               оффлайн-релиз через KGATE_RELEASE_BASE=<каталог>, sing-box
 #               заглушка, ассерты раскладки (шим, procd, /opt-compat, intent).
@@ -194,6 +198,28 @@ SMOKE
 	echo "install smoke: PASS (sentinel на месте)"
 }
 
+cmd_udp() {
+	say "udp: UDP data-path матрица — РЕАЛЬНЫЙ sing-box 1.14.x (host-run: relay — чистый Go, контейнер не нужен)"
+	command -v go >/dev/null 2>&1 || die "нужен go"
+	SB="$WORK/sing-box"
+	if [ ! -x "$SB" ]; then
+		say "udp: качаю sing-box 1.14.4 amd64 в lab/work (кэш; повторный прогон оффлайн)"
+		mkdir -p "$WORK"
+		curl -fsSL -o "$WORK/sb.tar.gz" \
+			"https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-linux-amd64.tar.gz" \
+			|| die "скачать sing-box не удалось (нужна сеть) — положи бинарь в $SB и повтори"
+		tar xzf "$WORK/sb.tar.gz" -C "$WORK"
+		cp "$WORK/sing-box-1.14.4-linux-amd64/sing-box" "$SB"
+		rm -rf "$WORK/sing-box-1.14.4-linux-amd64" "$WORK/sb.tar.gz"
+	fi
+	echo "  матрица: ndm cmd=5/any-dst, UDP-over-TCP раундтрип, control-conn t+0 (grace),"
+	echo "           cmd=5/real-dst CONNECT, BND 0.0.0.0 fallback, FRAG/malformed дроп,"
+	echo "           свежий релей, upstream dead rep=5, ноль dial 0.0.0.0, fd-гигиена, фаззинг,"
+	echo "           udp-smoke (ndm + RFC) с живым DNS"
+	(cd "$ROOT" && KGATE_UDP_LAB=1 KGATE_SINGBOX_BIN="$SB" \
+		go test ./internal/daemon -run 'TestLabRelayUDP|TestLabUDPSmoke' -race -count=1 -v)
+}
+
 # ---- dispatch ------------------------------------------------------------------
 
 case "${1:-}" in
@@ -202,7 +228,8 @@ case "${1:-}" in
 	shim)      cmd_shim ;;
 	migration) cmd_migration ;;
 	install)   cmd_install ;;
+	udp)       cmd_udp ;;
 	all)       cmd_shim; cmd_migration; cmd_install ;;
 	clean)     rm -rf "$WORK"; echo "lab: work очищен" ;;
-	*) die "usage: run.sh build|release|shim|migration|install|all|clean" ;;
+	*) die "usage: run.sh build|release|shim|migration|install|udp|all|clean" ;;
 esac
