@@ -5,12 +5,13 @@
 #   make -C lab shim        verb-покрытие ndm-shim + policy-v2 заглушки
 #   make -C lab migration   таблица решений back-compat миграции (mock-ndmc)
 #   make -C lab install     install.sh --platform=openwrt smoke (оффлайн-релиз)
+#   make -C lab udp         UDP data-path матрица kgate-004 (реальный sing-box, host)
 #   make -C lab all         всё сразу
 #   make -C lab clean       снести lab/work
 
 IMAGE ?= docker.io/openwrt/rootfs:latest
 
-.PHONY: all build release shim migration install clean
+.PHONY: all build release shim migration install udp clean
 
 all: shim migration install
 build:
@@ -23,5 +24,7 @@ migration:
 	./run.sh migration
 install:
 	./run.sh install
+udp:
+	./run.sh udp
 clean:
 	rm -rf work

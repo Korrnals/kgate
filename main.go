@@ -633,6 +633,34 @@ Read-only диагностика: показывает, что реально в
 		RunE: func(cmd *cobra.Command, args []string) error { client.Reboot(load()); return nil }})
 	root.AddCommand(policyCmd())
 
+	smokeAddr := "127.0.0.1:1090"
+	smokeDNS := "77.88.8.8"
+	smokeRFC := false
+	smokeTimeout := 5 * time.Second
+	udpSmoke := &cobra.Command{
+		Use:   "udp-smoke",
+		Short: "круговой UDP-тест релея (деплой-гейт kgate-004): cmd=5 → датаграмма → DNS-ответ",
+		Long: `Круговой датаграммный тест UDP data-path релея — гейт live-swap
+kgate-004. Идёт ровно путём LAN-клиентов: cmd=5 0.0.0.0:0 (диалект ndm),
+датаграмма ndm-формой в control-конн, DNS-запрос через sing-box и туннель,
+ответ кадром обратно. Ненулевой rc = UDP data-path мёртв (автооткат деплоера).
+
+  kgate udp-smoke                                — релей на роутере (ssh-форвард или локально)
+  kgate udp-smoke --addr 127.0.0.1:1090 --rfc   — вторая нога (cmd=3, RFC 1928 §7)
+
+--dns по умолчанию 77.88.8.8 (общедоступный резолвер): тест заодно
+доказывает живость туннеля целиком.`,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return client.UDPSmoke(smokeAddr, smokeDNS, 53, smokeRFC, smokeTimeout)
+		},
+	}
+	udpSmoke.Flags().StringVar(&smokeAddr, "addr", smokeAddr, "адрес SOCKS-релея")
+	udpSmoke.Flags().StringVar(&smokeDNS, "dns", smokeDNS, "резолвер для кругового теста (UDP:53)")
+	udpSmoke.Flags().BoolVar(&smokeRFC, "rfc", smokeRFC, "RFC-нога (cmd=3 + BND-сокет) вместо ndm-диалекта")
+	udpSmoke.Flags().DurationVar(&smokeTimeout, "timeout", smokeTimeout, "общий таймаут теста")
+	root.AddCommand(udpSmoke)
+
 	ver := &cobra.Command{Use: "version", Short: "версия", Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("kgate %s (serve + mTLS client + deployer)\n", appVersion)
 	}}

@@ -12,6 +12,24 @@
 // The relay now terminates a real SOCKS5 UDP framing session locally
 // (RFC 1928 §7) and pumps framed datagrams to sing-box's UDP endpoint:
 // client ⇄ relay-UDP ⇄ sing-box-mixed-UDP, transparent header passthrough.
+//
+// kgate-004: the "BND reply is enough" assumption was wrong for the ndm
+// client. Packet capture on the live router (16.11, lo:1090) showed cmd=5
+// 0.0.0.0:0 is NOT an RFC ASSOCIATE — it opens the client's UDP-over-TCP
+// channel: right after the BND reply the client streams length-prefixed
+// datagrams INTO the control connection
+//
+//	[data_len:2 BE][dst_ip:4][src_port:2 BE][dst_port:2 BE][data]
+//
+// (verified frames: NTP → :123, CoAP → :5683). kgate-003's silent monitor
+// (io.Copy(io.Discard, conn)) ate them: the client got no answers and
+// closed every association after 1-3s — 13 792/13 792 dead associations
+// on 16.11, LAN UDP down. The session is now dual-path: TCP-framed ndm
+// datagrams are terminated locally and bridged into the same sing-box UDP
+// endpoint (kgate-003 semantics preserved: upstream is a real SOCKS5 UDP
+// ASSOCIATE, never a tcp 0.0.0.0:0 dial); RFC-framed datagrams to the BND
+// socket keep working for RFC clients (cmd=3, e.g. KeeneticOS socks5-udp).
+// Replies go back over whichever transport the peer locked first.
 package daemon
 
 import (
@@ -21,6 +39,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -28,6 +47,13 @@ import (
 // и по закрытию control-conn (RFC 1928 §7: TCP-сессия держит UDP-состояние),
 // и по простою — иначе зависшие клиенты копят UDP-сокеты.
 const udpIdleTimeout = 2 * time.Minute
+
+// udpPeerGraceTimeout — короткое grace-окно, которое ассоциация переживает
+// закрытие control-conn (kgate-004, решение АрхКома фазы S): RFC 1928 §7
+// связывает жизнь ассоциации с TCP-ногой, но клиенты диалекта ndm и часть
+// RFC-клиентов рвут control-conn, продолжая слать датаграммы на BND. Тишина
+// дольше окна убивает сессию — дескрипторы не копятся.
+const udpPeerGraceTimeout = 15 * time.Second
 
 func (d *Daemon) relayAlive() bool {
 	c, err := net.DialTimeout("tcp", d.cfg.Daemon.RelayListen, time.Second)
@@ -263,18 +289,29 @@ func socksServerReply(r io.Reader) (net.IP, uint16, byte, error) {
 	return addr, binary.BigEndian.Uint16(pb), atyp, nil
 }
 
-// relayUDPAssociate terminates a real SOCKS5 UDP ASSOCIATE (RFC 1928 §7).
+// relayUDPAssociate terminates a real SOCKS5 UDP ASSOCIATE (RFC 1928 §7) —
+// upstream — and a dual-path client leg (kgate-004).
 //
-// Поле: sing-box mixed inbound НЕ диалит TCP на cmd=3 — он открывает свой
-// UDP-сокет и отвечает BND.ADDR/BND.PORT. Релей становится UDP-фрейм-пампой:
-// клиентские датаграммы (RSV FRAG ATYP DST.PORT | data) идут в BND sing-box
-// как есть, ответы sing-box — обратно клиенту. Демультиплекс по адресу
-// источника датаграммы (первый не-sing-box отправитель = клиент сессии;
-// чужие дропаются). FRAG>0 не поддерживается (дроп + лог) — туннельные
-// клиенты фрагментацию SOCKS-UDP не используют.
+// Upstream нога (kgate-003, без изменений): sing-box mixed inbound на cmd=3
+// НЕ диалит TCP — он открывает свой UDP-сокет и отвечает BND.ADDR/BND.PORT.
+// Никаких tcp 0.0.0.0:0-dials: это приёмка владельца по kgate-003.
 //
-// Якорь сессии — control-conn: закрытие любой стороны (клиент/sing-box) или
-// udpIdleTimeout молчания завершает ассоциацию и закрывает UDP-сокет.
+// Клиентская нога — две транспортные формы одной сессии:
+//   - RFC 1928 §7: датаграммы (RSV FRAG ATYP DST.PORT | data) приходят на
+//     UDP-сокет BND; ответы возвращаются на тот же сокет с заголовком как
+//     есть (cmd=3 и KeeneticOS `socks5-udp`);
+//   - ndm UDP-over-TCP (cmd=5 0.0.0.0:0): датаграммы приходят в САМ control
+//     -конн в форме [len:2][dst_ip:4][src_port:2][dst_port:2][data]; релей
+//     терминирует их локально, строит SOCKS-фрейм и шлёт в тот же UDP-сокет
+//     sing-box; ответы распаковываются и кадрируются обратно в TCP-поток
+//     (заголовок эхом: ровно тот, что прислал клиент).
+//
+// Демультиплекс ответов sing-box по transport-пeer'у: whichever транспорт
+// клиент использовал первым, тот и получает ответы; второй — только вперёд.
+// FRAG>0 в RFC-пути дропается с логом. Якорь сессии: udpIdleTimeout молчания
+// при живом control-conn; закрытие control-conn переводит ассоциацию в
+// grace-режим (udpPeerGraceTimeout) — датаграммы продолжают ходить, тишина
+// дольше окна завершает сессию (решение АрхКома фазы S по kgate-004).
 func (d *Daemon) relayUDPAssociate(conn net.Conn, logl func(string), upstream string) {
 	up, err := net.DialTimeout("tcp", upstream, 5*time.Second)
 	if err != nil {
@@ -348,21 +385,23 @@ func (d *Daemon) relayUDPAssociate(conn net.Conn, logl func(string), upstream st
 	}
 	sbAddr := &net.UDPAddr{IP: sbIP, Port: int(bndPort)}
 
-	// control-conn monitor: its closure ends the association (unblocks the
-	// UDP read via socket close)
-	go func() {
-		_, _ = io.Copy(io.Discard, conn)
-		_ = uc.Close()
-	}()
+	// kgate-004 session state: the client leg is dual-path (RFC UDP socket
+	// or ndm UDP-over-TCP framing inside the control conn)
+	s := &udpSession{conn: conn, uc: uc, sbAddr: sbAddr, logl: logl}
+
+	// control-conn reader: for the ndm client this is the DATA transport;
+	// for RFC clients it is just the liveness anchor (RFC: closing the TCP
+	// connection ends the association). Its closure ends the session via
+	// socket close.
+	go s.readControlFrames()
 
 	buf := make([]byte, 65535)
-	var clientAddr *net.UDPAddr
 	sbKey := sbAddr.String()
 	for {
-		uc.SetReadDeadline(time.Now().Add(udpIdleTimeout))
+		s.armRead()
 		n, src, err := uc.ReadFromUDP(buf)
 		if err != nil {
-			break // idle timeout / control-conn close / shutdown
+			break // idle timeout / grace истёк / shutdown
 		}
 		if n < 4 || buf[0] != 0 || buf[1] != 0 {
 			continue // malformed frame
@@ -371,19 +410,197 @@ func (d *Daemon) relayUDPAssociate(conn net.Conn, logl func(string), upstream st
 			logl("udp: SOCKS fragment dropped (FRAG=" + strconv.Itoa(int(buf[2])) + ")")
 			continue
 		}
-		switch {
-		case src.String() == sbKey:
-			if clientAddr != nil {
-				_, _ = uc.WriteToUDP(buf[:n], clientAddr) // upstream reply, header as-is
-			}
-		case clientAddr == nil:
-			clientAddr = src // first client datagram locks the session peer
-			_, _ = uc.WriteToUDP(buf[:n], sbAddr)
-		case src.String() == clientAddr.String():
-			_, _ = uc.WriteToUDP(buf[:n], sbAddr)
-		default:
-			// a datagram from a stranger: not this association's client
+		if src.String() == sbKey {
+			s.deliverUpstreamReply(buf[:n])
+			continue
 		}
+		if s.acceptClientDatagram(src) {
+			_, _ = uc.WriteToUDP(buf[:n], sbAddr)
+		}
+		// datagrams from anyone else: not this association's client
 	}
 	logl("udp: associate closed")
+}
+
+// peer kinds of a UDP association's client leg (kgate-004).
+const (
+	peerNone = iota
+	peerUDP  // RFC 1928 §7: datagrams to the BND socket
+	peerNDM  // ndm UDP-over-TCP: frames inside the control conn
+)
+
+// udpSession — клиентская нога одной UDP-ассоциации (kgate-004): контрольный
+// TCP-конн (транспорт ndm-фреймов + сигнал закрытия), UDP-сокет BND и пир,
+// первым захвативший право на ответы. mu защищает kind/udpPeer/hdr/peerClosed
+// и арминг read-дедлайна: кадры в control-конн читает одна горутина, ответы
+// sing-box раскладывает другая.
+type udpSession struct {
+	conn   net.Conn
+	uc     *net.UDPConn
+	sbAddr *net.UDPAddr
+	logl   func(string)
+
+	mu         sync.Mutex
+	kind       int          // peerNone / peerUDP / peerNDM
+	udpPeer    *net.UDPAddr // RFC-пир (peerUDP)
+	hdr        [8]byte      // последний ndm-заголовок: dst_ip(4) src_port(2) dst_port(2)
+	peerClosed bool         // control-conn закрыт → дедлайн сессии = grace-окно
+}
+
+// readControlFrames читает UDP-over-TCP кадры ndm-клиента
+// [len:2 BE][dst_ip:4][src_port:2 BE][dst_port:2 BE][data] из control-конна
+// и мостит их в sing-box как обычные SOCKS-UDP фреймы. Для RFC-пиров горутина
+// просто держит конн: EOF/ошибка = peerGone (grace-режим ассоциации), а
+// рассинхрон потока (oversized-кадр) — жёсткое закрытие сессии.
+func (s *udpSession) readControlFrames() {
+	lhdr := make([]byte, 2)
+	meta := make([]byte, 8)
+	for {
+		if _, err := io.ReadFull(s.conn, lhdr); err != nil {
+			s.peerGone()
+			return
+		}
+		n := int(binary.BigEndian.Uint16(lhdr))
+		if n == 0 {
+			continue // 0-длинник — пустой кадр/keepalive: мимо upstream
+		}
+		if n > 65507 {
+			// за пределами датаграммы UDP — рассинхрон потока, дальше
+			// честных границ не будет: сессию закрываем, не угадывая
+			s.logl("udp: ndm-tcp frame too big (" + strconv.Itoa(n) + ") — session closed")
+			_ = s.conn.Close()
+			_ = s.uc.Close()
+			return
+		}
+		if _, err := io.ReadFull(s.conn, meta); err != nil {
+			s.peerGone()
+			return
+		}
+		data := make([]byte, n)
+		if _, err := io.ReadFull(s.conn, data); err != nil {
+			s.peerGone()
+			return
+		}
+		first := s.lockNDMPeer(meta, n)
+		if first {
+			s.logl(fmt.Sprintf("udp: ndm-tcp first frame %dB (sport=%d -> dst %s:%d)",
+				n,
+				binary.BigEndian.Uint16(meta[4:6]),
+				net.IP(meta[0:4]).String(),
+				binary.BigEndian.Uint16(meta[6:8])))
+		}
+		frame := make([]byte, 10+n)
+		frame[0], frame[1], frame[2], frame[3] = 0, 0, 0, 1 // RSV FRAG ATYP=IPv4
+		copy(frame[4:8], meta[0:4])
+		binary.BigEndian.PutUint16(frame[8:10], binary.BigEndian.Uint16(meta[6:8]))
+		copy(frame[10:], data)
+		if _, err := s.uc.WriteToUDP(frame, s.sbAddr); err != nil {
+			_ = s.uc.Close()
+			return
+		}
+	}
+}
+
+// peerGone — control-conn закрылся (EOF/ошибка). Ассоциация НЕ умирает
+// мгновенно: она переживает udpPeerGraceTimeout (решение АрхКома фазы S),
+// датаграммы на BND продолжают ходить; мгновенно взводим grace-дедлайн,
+// чтобы прервать текущий idle-вэйтом read-цикл сессии.
+func (s *udpSession) peerGone() {
+	s.mu.Lock()
+	s.peerClosed = true
+	_ = s.uc.SetReadDeadline(time.Now().Add(udpPeerGraceTimeout))
+	s.mu.Unlock()
+}
+
+// armRead взводит read-дедлайн UDP-сокета: полное idle-окно при живом
+// control-conn, grace-окно после его закрытия. Под mu вместе с peerClosed,
+// чтобы арминг не перезаписал только что взведённый grace-дедлайн.
+func (s *udpSession) armRead() {
+	s.mu.Lock()
+	dl := udpIdleTimeout
+	if s.peerClosed {
+		dl = udpPeerGraceTimeout
+	}
+	_ = s.uc.SetReadDeadline(time.Now().Add(dl))
+	s.mu.Unlock()
+}
+
+// lockNDMPeer фиксирует ndm-пира (первый кадр) и запоминает его заголовок
+// для эха в ответах. Возвращает true на первом кадре сессии.
+func (s *udpSession) lockNDMPeer(meta []byte, n int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copy(s.hdr[:], meta)
+	if s.kind == peerNone {
+		s.kind = peerNDM
+		return true
+	}
+	return false
+}
+
+// acceptClientDatagram обрабатывает датаграмму, пришедшую не от sing-box:
+// первый отправитель блокирует RFC-пира (kgate-003 семантика), дальше
+// датаграммы того же пира идут вперёд, чужие дропаются. true — вперёд.
+func (s *udpSession) acceptClientDatagram(src *net.UDPAddr) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case s.kind == peerNone:
+		s.kind = peerUDP
+		s.udpPeer = src
+		return true
+	case s.kind == peerUDP && s.udpPeer.String() == src.String():
+		return true
+	default:
+		return false
+	}
+}
+
+// deliverUpstreamReply раскладывает ответ sing-box по пиру сессии:
+// peerUDP — фрейм как есть в UDP-сокет (kgate-003), peerNDM — данные
+// распаковываются из SOCKS-фрейма и кадрируются в control-конн
+// [len:2][hdr-эхо 8Б][data]. До лока пира ответы дропаются (kgate-003).
+func (s *udpSession) deliverUpstreamReply(frame []byte) {
+	s.mu.Lock()
+	kind := s.kind
+	peer := s.udpPeer
+	var hdr [8]byte
+	copy(hdr[:], s.hdr[:])
+	s.mu.Unlock()
+
+	switch kind {
+	case peerUDP:
+		if peer != nil {
+			_, _ = s.uc.WriteToUDP(frame, peer)
+		}
+	case peerNDM:
+		hl, err := socksUDPHeaderLen(frame)
+		if err != nil || hl+2 > len(frame) {
+			return // кривой фрейм от upstream — молча мимо
+		}
+		payload := frame[hl:]
+		out := make([]byte, 10+len(payload))
+		binary.BigEndian.PutUint16(out[0:2], uint16(len(payload)))
+		copy(out[2:10], hdr[:])
+		copy(out[10:], payload)
+		_, _ = s.conn.Write(out)
+	}
+	// peerNone: клиент ещё не заявил себя — ответ некуда класть
+}
+
+// socksUDPHeaderLen возвращает длину заголовка SOCKS5 UDP-фрейма
+// (RSV FRAG ATYP ADDR PORT) по ATYP.
+func socksUDPHeaderLen(f []byte) (int, error) {
+	if len(f) < 4 {
+		return 0, io.ErrShortBuffer
+	}
+	switch f[3] {
+	case 1:
+		return 4 + 4 + 2, nil
+	case 4:
+		return 4 + 16 + 2, nil
+	case 3:
+		return 4 + 1 + int(f[4]) + 2, nil
+	}
+	return 0, io.ErrUnexpectedEOF
 }

@@ -6,6 +6,41 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **relay: the ndm UDP data path actually carries data now (kgate-004).**
+  kgate-003 terminated a genuine SOCKS5 UDP ASSOCIATE upstream but assumed
+  the ndm client would use RFC 1928 §7 framing on the BND socket. Live
+  packet capture on the router (16.11, lo:1090) proved otherwise: cmd=5
+  0.0.0.0:0 opens the client's UDP-over-TCP channel, and right after the
+  BND reply the client streams length-prefixed datagrams INTO the control
+  connection — `[data_len:2 BE][dst_ip:4][src_port:2 BE][dst_port:2 BE]
+  [data]` (captured frames: NTP → :123, CoAP → :5683). kgate-003's silent
+  monitor `io.Copy(io.Discard, conn)` ate every one of them; the client
+  saw no answers and closed each association after 1-3s: 13 792/13 792
+  dead associations on 16.11, LAN UDP down (TCP cmd=1 unaffected). The
+  session is now dual-path: ndm TCP-framed datagrams are terminated
+  locally, bridged into the same sing-box UDP endpoint as proper SOCKS
+  frames, and replies are re-framed back into the control connection
+  (mirrored header); RFC-framed datagrams to the BND socket keep working
+  for RFC clients (cmd=3, KeeneticOS socks5-udp). kgate-003 semantics
+  preserved: upstream is still a real UDP ASSOCIATE — zero
+  `dial tcp 0.0.0.0:0` (signature-asserted in the lab). Per the ArchCom
+  phase-S decision the association now also SURVIVES control-conn closure
+  for a short grace window (`udpPeerGraceTimeout`, 15s) instead of dying
+  instantly — RFC-shaped clients that close the TCP leg and keep sending
+  UDP stay served, and idle/grace deadlines keep fd usage bounded.
+  New tooling: `kgate udp-smoke` (circular datagram gate for the deployer:
+  cmd=5 → DNS datagram → answer through the tunnel; non-zero rc = auto
+  rollback) with `--rfc` for the second leg; lab matrix `make -C lab udp`
+  runs the full UDP data-path suite against a REAL sing-box 1.14.4 (12
+  rows incl. the red-green control-conn-close pair, dead-upstream rep=5,
+  fd-hygiene after a 60-association burst, deterministic fuzz with no
+  panics). Unit suite extended: ndm roundtrip, zero-len keepalive,
+  oversized-frame desync hard-close, first-transport reply locking, fuzz
+  survivor — `go test -race` green.
+
+
+
 ## [1.9.3] - 2026-11-15
 
 ### Fixed
