@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-11-16
+
 ### Fixed
 - **relay: the ndm UDP data path actually carries data now (kgate-004).**
   kgate-003 terminated a genuine SOCKS5 UDP ASSOCIATE upstream but assumed
@@ -38,8 +40,6 @@ follows [Semantic Versioning](https://semver.org/).
   panics). Unit suite extended: ndm roundtrip, zero-len keepalive,
   oversized-frame desync hard-close, first-transport reply locking, fuzz
   survivor — `go test -race` green.
-
-
 
 ## [1.9.3] - 2026-11-15
 
