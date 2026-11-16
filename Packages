@@ -128,3 +128,14 @@ SHA256sum: 51fa897e4b7750005127426abc002482ded3df6a2d2bb0fa2a852b17f00481db
 Size: 34177774
 Description: VPN-stack supervisor for Netcraze/Keenetic (sing-box + tolerant socks relay + mTLS API)
 
+
+Package: kgate
+Version: 1.9.4-1
+Architecture: aarch64-3.10
+Maintainer: Korrnals
+Depends: iptables, openssh-server
+Filename: ./kgate_1.9.4-1_aarch64-3.10.ipk
+SHA256sum: ecb3cf78acf4fee42721242710351acead3b272635f4e41420c6df3de7084dc5
+Size: 34186847
+Description: VPN-stack supervisor for Netcraze/Keenetic (sing-box + tolerant socks relay + mTLS API)
+
