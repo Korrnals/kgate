@@ -1,6 +1,6 @@
 # сборка
 kgate
-build/
+/build/
 # payload.tgz = РАБОЧИЙ payload (make payload), gitignored НАВСЕГДА: он несёт
 # реальные конфиги local/etc и не должен когда-либо попасть в коммит
 # (инцидент v1.3.1: git add -A после make payload закоммитил 15MB реального
