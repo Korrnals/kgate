@@ -489,6 +489,13 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   fallback** — the pre-check now returns an error instead of exiting,
   doctor works end-to-end on the router.
 
+## [1.10.3] - 2026-11-16
+
+### Fixed
+- **config: router render path in the default resolution** — commands
+  without -c on the router now read /opt/etc/kgate/kgate.yaml instead
+  of a missing ~/.kgate (doctor/status reported wrong live state).
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
