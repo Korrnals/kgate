@@ -11,8 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	"fmt"
 	"kgate/internal/build"
 	"kgate/internal/model"
+	"net/http"
+	"net/http/httptest"
 )
 
 func doctorTestConfig(t *testing.T) *model.Config {
@@ -176,5 +179,44 @@ func TestServerEndpoint(t *testing.T) {
 	write(`{"outbounds":[{"type":"direct"}]}`)
 	if _, _, err := serverEndpoint(path); err == nil {
 		t.Fatal("config без tls.server_name должен давать ошибку")
+	}
+}
+
+// Router-local fallback: mTLS-сёртов нет, но панель с паролем отвечает —
+// версия демона должна приходить из /kgate/api/status (инцидент 16.11:
+// doctor на роутере падал с «CA не найден» до этого fallback'а).
+func TestPanelDaemonVersion_Fallback(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/kgate/login":
+			if r.PostFormValue("password") != "pw" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "kgate_panel", Value: "t"})
+			w.WriteHeader(http.StatusSeeOther)
+		case "/kgate/api/status":
+			for _, ck := range r.Cookies() {
+				if ck.Name == "kgate_panel" && ck.Value == "t" {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, `{"version":"1.10.0","singbox":"running"}`)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	v, err := panelDaemonVersion(srv.URL, "pw")
+	if err != nil {
+		t.Fatalf("panel fallback: %v", err)
+	}
+	if v != "1.10.0" {
+		t.Fatalf("version = %q, want 1.10.0", v)
+	}
+	if _, err := panelDaemonVersion(srv.URL, "wrong"); err == nil {
+		t.Fatal("неверный пароль должен давать ошибку")
 	}
 }

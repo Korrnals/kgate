@@ -19,10 +19,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -52,20 +55,19 @@ type checkResult struct {
 func defaultDoctorDeps(c *model.Config) doctorDeps {
 	return doctorDeps{
 		daemonStatus: func() (string, error) {
-			b, code := api(c, "GET", "/api/v1/status", nil)
-			if code >= 400 {
-				return "", fmt.Errorf("HTTP %d", code)
+			// Двухступенчатый доступ к версии РАБОТАЮЩЕГО демона (инцидент 16.11):
+			// 1) mTLS API — control-node case (клиентские серты есть);
+			// 2) fallback: панель с паролем из конфига — router-local case:
+			//    CA-ключ живёт на control-node, локальных клиентских сертов
+			//    на роутере нет by construction, mTLS сам-к-себе невозможен.
+			if v, err := mtlsDaemonVersion(c); err == nil {
+				return v, nil
 			}
-			var st struct {
-				Version string `json:"version"`
+			v, err := panelDaemonVersion(fmt.Sprintf("https://127.0.0.1:%d", c.Panel.Port), c.Panel.Password)
+			if err != nil {
+				return "", fmt.Errorf("mTLS и панель недоступны: %w", err)
 			}
-			if err := json.Unmarshal(b, &st); err != nil {
-				return "", err
-			}
-			if st.Version == "" {
-				return "", fmt.Errorf("демон без поля version — старый код, рестартуй S99kgate")
-			}
-			return st.Version, nil
+			return v, nil
 		},
 		ndmcShow: func(cmd string) (string, error) {
 			out, err := exec.Command("/bin/ndmc", "-c", cmd).CombinedOutput()
@@ -272,4 +274,78 @@ func firstErr(errs ...error) string {
 // Doctor — CLI-команда; запускается НА РОУТЕРЕ (kgate.yaml с секцией daemon).
 func Doctor(c *model.Config) {
 	os.Exit(runDoctor(c, defaultDoctorDeps(c), os.Stdout))
+}
+
+// mtlsDaemonVersion — версия работающего демона через mTLS API (control-node:
+// клиентские серты есть). Ошибки возвращаются, не фаталятся — вызывающий
+// деградирует на панельный fallback.
+func mtlsDaemonVersion(c *model.Config) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://%s:%d/api/v1/status", c.Host, c.API.Port), nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := httpc(c).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	var st struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return "", err
+	}
+	if st.Version == "" {
+		return "", errors.New("демон без поля version — старый код, рестартуй S99kgate")
+	}
+	return st.Version, nil
+}
+
+// panelDaemonVersion — версия через панель (router-local fallback: локальных
+// клиентских mTLS-сёртов на роутере нет by construction — CA-ключ на
+// control-node). Логин паролем из конфига → cookie → /kgate/api/status.
+func panelDaemonVersion(base, password string) (string, error) {
+	if password == "" {
+		return "", errors.New("panel.password не задан — панель выключена")
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return "", err
+	}
+	cl := &http.Client{
+		Timeout:   8 * time.Second,
+		Jar:       jar,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
+	loginURL := base + "/kgate/login"
+	form := url.Values{"password": {password}}
+	lr, err := cl.Post(loginURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	lr.Body.Close()
+	if lr.StatusCode != http.StatusSeeOther && lr.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("панель login: HTTP %d (пароль верен?)", lr.StatusCode)
+	}
+	sr, err := cl.Get(base + "/kgate/api/status")
+	if err != nil {
+		return "", err
+	}
+	defer sr.Body.Close()
+	if sr.StatusCode >= 400 {
+		return "", fmt.Errorf("панель status: HTTP %d", sr.StatusCode)
+	}
+	var st struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(sr.Body).Decode(&st); err != nil {
+		return "", err
+	}
+	if st.Version == "" {
+		return "", errors.New("панель без поля version — демон старого кода (до 1.10.0), рестартуй S99kgate")
+	}
+	return st.Version, nil
 }
