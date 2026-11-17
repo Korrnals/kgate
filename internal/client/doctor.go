@@ -18,6 +18,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -276,15 +277,40 @@ func Doctor(c *model.Config) {
 	os.Exit(runDoctor(c, defaultDoctorDeps(c), os.Stdout))
 }
 
+// MTLS_PATCHED marker
 // mtlsDaemonVersion — версия работающего демона через mTLS API (control-node:
 // клиентские серты есть). Ошибки возвращаются, не фаталятся — вызывающий
-// деградирует на панельный fallback.
+// деградирует на панельный fallback. ВАЖНО: httpc() здесь нельзя — он
+// фаталить на отсутствии локальных сертов, а на роутере их нет by
+// construction (инцидент 16.11: doctor умирал до любых проверок).
 func mtlsDaemonVersion(c *model.Config) (string, error) {
+	for _, p := range []string{c.API.CA, c.API.Cert, c.API.Key} {
+		if _, err := os.Stat(p); err != nil {
+			return "", fmt.Errorf("локальных клиентских сертов нет (%s) — router-local fallback", c.API.CA)
+		}
+	}
+	caPEM, err := os.ReadFile(c.API.CA)
+	if err != nil {
+		return "", err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return "", errors.New("CA файл битый: " + c.API.CA)
+	}
+	cert, err := tls.LoadX509KeyPair(c.API.Cert, c.API.Key)
+	if err != nil {
+		return "", err
+	}
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("https://%s:%d/api/v1/status", c.Host, c.API.Port), nil)
 	if err != nil {
 		return "", err
 	}
-	resp, err := httpc(c).Do(req)
+	cl := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
+		MinVersion:   tls.VersionTLS12,
+	}}}
+	resp, err := cl.Do(req)
 	if err != nil {
 		return "", err
 	}
