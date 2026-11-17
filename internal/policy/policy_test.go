@@ -54,10 +54,10 @@ func TestParseHotspot_DesignFixture(t *testing.T) {
 		t.Fatalf("segments: got %d, want 2 (%+v)", len(tbl.Segments), tbl.Segments)
 	}
 	s0, s1 := tbl.Segments[0], tbl.Segments[1]
-	if s0.Name != "Bridge0" || s0.Description != "Home" || !s0.Active || s0.Policy != "" {
+	if s0.Name != "Home" || s0.Id != "Bridge0" || s0.Description != "Home" || !s0.Active || s0.Policy != "" {
 		t.Errorf("segment0 = %+v", s0)
 	}
-	if s1.Name != "Bridge1" || s1.Description != "LAN" {
+	if s1.Name != "LAN" || s1.Id != "Bridge1" || s1.Description != "LAN" {
 		t.Errorf("segment1 = %+v", s1)
 	}
 
@@ -65,7 +65,7 @@ func TestParseHotspot_DesignFixture(t *testing.T) {
 		t.Fatalf("hosts: got %d, want 4 (%+v)", len(tbl.Hosts), tbl.Hosts)
 	}
 	if h := tbl.Hosts[0]; h.Hostname != "pixel-phone" || h.MAC != "5c:eb:f6:aa:bb:01" ||
-		h.IP != "192.168.1.52" || h.Policy != "VPN" || h.Segment != "Bridge0" || !h.Active {
+		h.IP != "192.168.1.52" || h.Policy != "VPN" || h.Segment != "Home" || !h.Active {
 		t.Errorf("host0 = %+v", h)
 	}
 	// empty policy field = unbound (honest default)
@@ -73,7 +73,7 @@ func TestParseHotspot_DesignFixture(t *testing.T) {
 		t.Errorf("empty-policy host = %+v", h)
 	}
 	// inactive host, no ip line
-	if h := tbl.Hosts[3]; h.Active || h.IP != "" || h.Segment != "Bridge1" {
+	if h := tbl.Hosts[3]; h.Active || h.IP != "" || h.Segment != "LAN" {
 		t.Errorf("inactive host = %+v", h)
 	}
 }
@@ -94,10 +94,10 @@ func TestParseHotspot_AccessPointRemark(t *testing.T) {
 	if len(tbl.Segments) != 1 || len(tbl.Hosts) != 1 {
 		t.Fatalf("parsed %+v", tbl)
 	}
-	if s := tbl.Segments[0]; s.Name != "Bridge2" || s.Description != "SMART segment" || s.Policy != "NO-VPN" {
+	if s := tbl.Segments[0]; s.Name != "SMART" || s.Id != "Bridge2" || s.Description != "SMART segment" || s.Policy != "NO-VPN" {
 		t.Errorf("segment = %+v", s)
 	}
-	if h := tbl.Hosts[0]; h.Segment != "Bridge2" || h.Policy != "" || !h.Active {
+	if h := tbl.Hosts[0]; h.Segment != "SMART" || h.Policy != "" || !h.Active {
 		t.Errorf("host = %+v", h)
 	}
 }
@@ -263,7 +263,7 @@ func TestResolveHost_AmbiguousHostname(t *testing.T) {
 func TestResolveSegment(t *testing.T) {
 	tbl := ParseHotspot(fixtureHotspot)
 	s, err := ResolveSegment(tbl, "Home")
-	if err != nil || s.Name != "Bridge0" {
+	if err != nil || s.Name != "Home" || s.Id != "Bridge0" {
 		t.Errorf("by description: (%+v, %v)", s, err)
 	}
 	s, err = ResolveSegment(tbl, "bridge1")

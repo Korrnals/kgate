@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"kgate/internal/build"
 	"kgate/internal/certs"
 	"kgate/internal/client"
 	"kgate/internal/daemon"
@@ -22,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var appVersion = "dev"
 var cfgPath string
 var onlyStage string
 var dryRun bool
@@ -588,7 +588,7 @@ Read-only диагностика: показывает, что реально в
 		Use:   "update",
 		Short: "самобновление: GitHub Releases → проверка версии → атомарная замена (+ рестарт сервиса на роутере)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			os.Exit(update.Run(appVersion))
+			os.Exit(update.Run(build.Version))
 			return nil
 		},
 	})
@@ -612,6 +612,8 @@ Read-only диагностика: показывает, что реально в
 		RunE: func(cmd *cobra.Command, args []string) error { client.Status(load()); return nil }})
 	root.AddCommand(&cobra.Command{Use: "verify", Short: "батарея проверок (демон + локальный socks-тест)",
 		RunE: func(cmd *cobra.Command, args []string) error { client.Verify(load()); return nil }})
+	root.AddCommand(&cobra.Command{Use: "doctor", Short: "самодиагностика на роутере: версия/туннель/серт/дрейф/панель (read-only)",
+		RunE: func(cmd *cobra.Command, args []string) error { client.Doctor(load()); return nil }})
 	toggle := &cobra.Command{Use: "toggle <on|off>", Args: cobra.ExactArgs(1),
 		Short: "тумблер HYST VPN",
 		RunE:  func(cmd *cobra.Command, args []string) error { client.Toggle(load(), args[0]); return nil }}
@@ -662,7 +664,7 @@ kgate-004. Идёт ровно путём LAN-клиентов: cmd=5 0.0.0.0:0 
 	root.AddCommand(udpSmoke)
 
 	ver := &cobra.Command{Use: "version", Short: "версия", Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("kgate %s (serve + mTLS client + deployer)\n", appVersion)
+		fmt.Printf("kgate %s (serve + mTLS client + deployer)\n", build.Version)
 	}}
 	root.AddCommand(ver)
 

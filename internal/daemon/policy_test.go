@@ -160,15 +160,15 @@ func TestPolicySetSegment_ByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set segment: %v", err)
 	}
-	if out["ndmc"] != "ip hotspot policy Bridge0 NO-VPN" {
+	if out["ndmc"] != "ip hotspot policy Home NO-VPN" {
 		t.Errorf("ndmc = %v", out["ndmc"])
 	}
 	if _, err := d.policySetSegment("bridge1", "VPN"); err != nil { // by token
 		t.Fatalf("unbind segment: %v", err)
 	}
 	assertCmds(t, fake, []string{
-		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Bridge0 NO-VPN", "system configuration save",
-		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Bridge1 VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy Home NO-VPN", "system configuration save",
+		"show ip hotspot", "show running-config", "show ip policy", "ip hotspot policy LAN VPN", "system configuration save",
 	}, "segment")
 }
 
@@ -340,7 +340,7 @@ func TestPolicyList_Shape(t *testing.T) {
 	if hosts := rep["hosts"].([]hostView); len(hosts) != 5 {
 		t.Errorf("hosts = %d", len(hosts))
 	}
-	if segs := rep["segments"].([]segmentView); len(segs) != 2 || segs[1].Name != "Bridge1" {
+	if segs := rep["segments"].([]segmentView); len(segs) != 2 || segs[1].Name != "LAN" || segs[1].Id != "Bridge1" {
 		t.Errorf("segments = %+v", rep["segments"])
 	}
 }

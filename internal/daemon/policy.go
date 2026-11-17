@@ -135,7 +135,8 @@ type hostView struct {
 }
 
 type segmentView struct {
-	Name        string `json:"name"`
+	Name        string `json:"name"` // ndm-имя сегмента (глагольный токен `policy Home VPN`), НЕ bridge-id
+	Id          string `json:"id"`   // интерфейсный токен (Bridge0…) — алиас резолва
 	Description string `json:"description"`
 	Policy      string `json:"policy"` // "" = unbound
 	Active      bool   `json:"active"`
@@ -170,7 +171,7 @@ func segmentViews(tbl policy.Table) []segmentView {
 		// line — the segment is honest-active when any of its hosts is.
 		act := s.Active || active[s.Name]
 		out = append(out, segmentView{
-			Name: s.Name, Description: s.Description,
+			Name: s.Name, Id: s.Id, Description: s.Description,
 			Policy: s.Policy, Active: act, Hosts: counts[s.Name],
 		})
 	}

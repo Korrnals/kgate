@@ -319,7 +319,8 @@ func (p *panelServer) statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(map[string]any{
 		"singbox": st.SingBox, "relay": st.Relay, "proxy0": st.Proxy0,
-		"mode": st.Mode, "uptime": st.Uptime, "exit_ip": exitIP,
+		"version": st.Version,
+		"mode":    st.Mode, "uptime": st.Uptime, "exit_ip": exitIP,
 	})
 }
 

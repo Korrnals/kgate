@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"kgate/internal/build"
 	"kgate/internal/certs"
 	"time"
 
@@ -125,6 +126,14 @@ func TestPanel_Auth(t *testing.T) {
 	// cookie работает
 	if rec := panelGet(srv, "/kgate/api/status", tok); rec.Code != http.StatusOK {
 		t.Fatalf("api с cookie = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	} else {
+		// version-in-status (v1.10.0): панель видит версию РАБОТАЮЩЕГО демона
+		var st struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil || st.Version != build.Version {
+			t.Fatalf("status version = %q (err=%v), want %q", st.Version, err, build.Version)
+		}
 	}
 	// login-страница без cookie доступна
 	if rec := panelGet(srv, "/kgate/login", ""); rec.Code != http.StatusOK {
@@ -249,7 +258,7 @@ func TestPanel_Policies(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("policies json: %v (%s)", err, rec.Body.String())
 	}
-	if len(out.Segments) != 1 || out.Segments[0]["name"] != "Bridge0" {
+	if len(out.Segments) != 1 || out.Segments[0]["name"] != "Home" {
 		t.Fatalf("segments = %+v", out.Segments)
 	}
 	if len(out.Hosts) != 1 || out.Hosts[0]["policy"] != "VPN" {

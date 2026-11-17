@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"kgate/internal/build"
 	"kgate/internal/model"
 )
 
@@ -699,6 +700,7 @@ func (d *Daemon) waitPort(addr string, timeout time.Duration) bool {
 // ---- status / verification ----
 
 type Status struct {
+	Version  string `json:"version"` // версия РАБОТАЮЩЕГО демона (build.Version, вшита ldflags) — инцидент 16.11: старый код крутился 4 дня после апгрейда бинарника
 	SingBox  string `json:"singbox"`
 	Relay    string `json:"relay"`
 	FDLimit  string `json:"fd_limit"`
@@ -717,6 +719,7 @@ func (d *Daemon) status() Status {
 	up := sh(`cat /proc/uptime`)
 	debugRaw := sh(`/bin/ndmc -c "show interface Proxy0" 2>&1 | head -c 200`)
 	return Status{
+		Version:  build.Version,
 		SingBox:  boolStr(d.mgr.alive(d.mgr.procs[0])),
 		Relay:    boolStr(d.relayAlive()),
 		FDLimit:  strings.TrimSpace(fd),

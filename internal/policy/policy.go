@@ -227,15 +227,21 @@ func ParseHotspot(out string) Table {
 		case "interface", "access point":
 			flushHost()
 			seg = -1
-			// value may carry a remark ("Bridge0 (Home)") — the bind token is
-			// the first field; the full text is the fallback description
-			name := val
+			// value may carry the ndm segment NAME as a remark ("Bridge0 (Home)") —
+			// TL 16.11: the API returned name:''-ish identity because the bind token
+			// was treated as the name. Token = Id; remark = real ndm name (the
+			// `policy <NAME> <VPN>` verb token, e.g. Home) + fallback description.
+			id := val
 			desc := ""
 			if f := strings.Fields(val); len(f) > 0 {
-				name = f[0]
+				id = f[0]
 				desc = strings.Trim(strings.TrimSpace(strings.Join(f[1:], " ")), "()")
 			}
-			t.Segments = append(t.Segments, Segment{Name: name, Description: desc})
+			name := desc
+			if name == "" {
+				name = id // token-only render: honest fallback until description:/name: arrives
+			}
+			t.Segments = append(t.Segments, Segment{Name: name, Id: id, Description: desc})
 			seg = len(t.Segments) - 1
 			if name != "" {
 				// design render: identity complete, no sub-block expected;
@@ -268,6 +274,12 @@ func ParseHotspot(out string) Table {
 				pend.desc = val
 			} else if cur == nil && seg >= 0 {
 				t.Segments[seg].Description = val
+				// token-only design render ("interface: Bridge0" + description):
+				// the description IS the ndm segment name (`policy Home VPN`) —
+				// promote it so the API never shows the bare bridge id as name
+				if t.Segments[seg].Name == t.Segments[seg].Id {
+					t.Segments[seg].Name = val
+				}
 			}
 		case "hostname":
 			if cur != nil && cur.Hostname != "" {

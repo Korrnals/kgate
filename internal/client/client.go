@@ -16,6 +16,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"kgate/internal/build"
 	"kgate/internal/model"
 )
 
@@ -88,6 +89,24 @@ func Status(c *model.Config) {
 	b, code := api(c, "GET", "/api/v1/status", nil)
 	fmt.Println("=== status (mTLS", code, ") ===")
 	fmt.Println(pretty(b))
+	warnVersionMismatch(c)
+}
+
+// warnVersionMismatch: инцидент 16.11 — бинарник апгрейднули, демон остался
+// на старом коде на 4 дня. Версия демона приходит из mTLS /status (её вшил
+// ldflags ЕГО сборки), локальная — из build.Version ЭТОГО бинаря.
+func warnVersionMismatch(c *model.Config) {
+	var st struct {
+		Version string `json:"version"`
+	}
+	b, code := api(c, "GET", "/api/v1/status", nil)
+	if code >= 400 || json.Unmarshal(b, &st) != nil || st.Version == "" {
+		return // недоступность демона здесь не диагноз — status выше уже отчитался
+	}
+	if st.Version != build.Version {
+		fmt.Printf("ПРЕДУПРЕЖДЕНИЕ: бинарник %s, демон %s — рестарт не активировал апгрейд; выполни на роутере: S99kgate restart\n",
+			build.Version, st.Version)
+	}
 }
 
 // WaitProxyUp polls the daemon until Proxy0 is up (deploy uses it to wait out

@@ -128,6 +128,7 @@ function statusCards(s){
   c('sing-box',s.singbox,s.singbox==='running'?'ok':'bad')+
   c('relay',s.relay,s.relay==='running'?'ok':'bad')+
   c('Proxy0',s.proxy0,/up/.test(s.proxy0)?'ok':'bad')+
+  c('версия демона',s.version||'—')+
   c('режим',s.mode)+
   c('uptime',s.uptime)+
   c('exit IP',exitIp);

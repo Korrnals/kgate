@@ -14,7 +14,7 @@ VERSION := $(shell cat VERSION 2>/dev/null || echo 0.0.0-dev)
 # одном тулчейне с чистым stdlib (голос: runner качает тулчейн при первом запуске).
 export GOTOOLCHAIN := go1.27.4
 # -s -w: strip debug tables — ~14.3MB → ~10-11MB (мало места на встроенных дисках роутеров)
-LDFLAGS := -s -w -X main.appVersion=$(VERSION)
+LDFLAGS := -s -w -X kgate/internal/build.Version=$(VERSION)
 # каталог релизных артефактов (goreleaser-хук разводит свои ipk в отдельный
 # каталог — dist/ goreleaser держит под собой и требует пустым)
 DIST_DIR ?= dist
