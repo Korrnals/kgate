@@ -6,127 +6,6 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-
-- `kgate doctor` — самодиагностика на роутере (read-only): версия демона
-  vs бинарник, egress-проба через socks (generate_204), TLS/SAN серта
-  сервера из конфига sing-box, dry-прогон декларативных планов
-  (policies, dns.hosts), логин-страница панели; FAIL-строки с подсказкой,
-  exit 1 при проблемах. Все проверки — кодификация реальных инцидентов
-  поля (16.11 устаревший демон, x509 12.11/16.11, ручной дрейф ndm).
-- Версия работающего демона в `/api/v1/status`, панели (`версия демона`)
-  и `kgate status`: единый источник — `internal/build.Version`, вшивается
-  ldflags при сборке; при расхождении CLI печатает предупреждение
-  «рестарт не активировал апгрейд; S99kgate restart» (инцидент 16.11:
-  старый код крутился 4 дня после апгрейда бинарника).
-
-### Fixed
-
-- Имена сегментов в `/kgate/api/policies` и `kgate policy list segments`:
-  парсер `show ip hotspot` принимал интерфейсный токен (Bridge0) за имя
-  сегмента; теперь Name = реальное ndm-имя (Home — глагольный токен
-  `policy Home VPN`), токен — в поле id, remark/description — источник
-  имени (наблюдение TL 16.11).
-
-## [1.9.4] - 2026-11-16
-
-### Fixed
-- **relay: the ndm UDP data path actually carries data now (kgate-004).**
-  kgate-003 terminated a genuine SOCKS5 UDP ASSOCIATE upstream but assumed
-  the ndm client would use RFC 1928 §7 framing on the BND socket. Live
-  packet capture on the router (16.11, lo:1090) proved otherwise: cmd=5
-  0.0.0.0:0 opens the client's UDP-over-TCP channel, and right after the
-  BND reply the client streams length-prefixed datagrams INTO the control
-  connection — `[data_len:2 BE][dst_ip:4][src_port:2 BE][dst_port:2 BE]
-  [data]` (captured frames: NTP → :123, CoAP → :5683). kgate-003's silent
-  monitor `io.Copy(io.Discard, conn)` ate every one of them; the client
-  saw no answers and closed each association after 1-3s: 13 792/13 792
-  dead associations on 16.11, LAN UDP down (TCP cmd=1 unaffected). The
-  session is now dual-path: ndm TCP-framed datagrams are terminated
-  locally, bridged into the same sing-box UDP endpoint as proper SOCKS
-  frames, and replies are re-framed back into the control connection
-  (mirrored header); RFC-framed datagrams to the BND socket keep working
-  for RFC clients (cmd=3, KeeneticOS socks5-udp). kgate-003 semantics
-  preserved: upstream is still a real UDP ASSOCIATE — zero
-  `dial tcp 0.0.0.0:0` (signature-asserted in the lab). Per the ArchCom
-  phase-S decision the association now also SURVIVES control-conn closure
-  for a short grace window (`udpPeerGraceTimeout`, 15s) instead of dying
-  instantly — RFC-shaped clients that close the TCP leg and keep sending
-  UDP stay served, and idle/grace deadlines keep fd usage bounded.
-  New tooling: `kgate udp-smoke` (circular datagram gate for the deployer:
-  cmd=5 → DNS datagram → answer through the tunnel; non-zero rc = auto
-  rollback) with `--rfc` for the second leg; lab matrix `make -C lab udp`
-  runs the full UDP data-path suite against a REAL sing-box 1.14.4 (12
-  rows incl. the red-green control-conn-close pair, dead-upstream rep=5,
-  fd-hygiene after a 60-association burst, deterministic fuzz with no
-  panics). Unit suite extended: ndm roundtrip, zero-len keepalive,
-  oversized-frame desync hard-close, first-transport reply locking, fuzz
-  survivor — `go test -race` green.
-
-## [1.9.3] - 2026-11-15
-
-### Fixed
-- **relay: UDP ASSOCIATE terminated as a real SOCKS5 UDP session
-  (kgate-003).** The tolerant relay translated EVERY request — including
-  UDP ASSOCIATE (cmd=3, and the broken ndm client's cmd=5 with dst
-  0.0.0.0:0) — into a TCP CONNECT towards sing-box mixed. sing-box then
-  dialled `tcp 0.0.0.0:0` through the direct outbound and timed out after
-  5s: 143 029 `open connection to 0.0.0.0:0 ... i/o timeout` errors in
-  singbox.log over the kgate-001-dev deploy (staged 13.11 20:02, ~17/min)
-  and dead UDP flows on the LAN. The relay now dispatches the UDP class
-  (cmd=3 with any dst; cmd=5 with any-dst 0.0.0.0:0/"::":0) to a genuine
-  RFC 1928 §7 session: upstream cmd=3 to sing-box (which opens its UDP
-  endpoint instead of dialing), a client-facing UDP socket on the relay
-  host, BND echoed as the address the client itself reached, and a
-  transparent frame pump (RSV/FRAG/ATYP/DST headers pass through
-  untouched; FRAG>0 dropped+logged). Demultiplex by datagram source: the
-  first non-sing-box sender locks the session peer, strangers are
-  dropped. Session ends on control-conn close (RFC: TCP holds the UDP
-  state) or a 2-minute idle. TCP compatibility preserved: cmd=1 and the
-  broken cmd=5 with a REAL target still go to CONNECT (tun2socks).
-  Regression suite over a sing-box mock: cmd=3 and cmd=5/0.0.0.0:0 must
-  reach upstream as cmd=3 (never CONNECT), UDP frame roundtrip client ⇄
-  relay ⇄ sing-box byte-exact, FRAG dropped, cmd=5 with a real dst still
-  CONNECTs.
-- **`kgate policy set segment` failed on every real-router resolve
-  (kgate-001).** KeeneticOS 4.x renders `show ip hotspot` as per-association
-  blocks with an EMPTY `interface:` value and the segment identity on
-  `id:`/`name:`/`description:` sub-lines (`id: Bridge0`, `name: Home`,
-  `description: WLAN`). The parser took the empty value as the name, so every
-  `Segment.Name` was `""` and every resolve died — by ndm name («сегмент не
-  найден»), by description (resolved to an empty name, rejected by the bind
-  token guard). The known bug 3de63d9e (declarative policies bypassed the
-  resolver since 1.8.0) is fixed at the root: segment identity is parsed from
-  the sub-lines (ndm name = verb token; bridge id and description are resolve
-  aliases), associations dedup per segment, association `policy:`/`active:`
-  lines attach to their host, and the daemon overlays segment bindings from
-  running-config (`policy <seg> <VPN|NO-VPN>`) exactly as it already did for
-  hosts — the set-segment idempotence check now sees real bindings. A failed
-  resolve is loud: it names the searched target and lists what ndm actually
-  showed. Regression fixtures pin the captured live render.
-- **daemon: ndmc reads now run over a local PTY (kgate-002).** The daemon
-  called `/bin/ndmc` through `sh` + pipes, so it inherited the non-tty clip
-  documented in 1.8.2 for the deploy path: as the running-config grows, the
-  tail of `show running-config` — where the `ip hotspot` bindings live —
-  is lost, blinding the policy overlay (the daemon half of the kgate-001
-  report). Every ndmc call from the daemon now runs under a fresh local
-  PTY (creack/pty, 200x500 dumb profile, same as deploy), with ANSI/CR
-  stripped before return. SIGHUP containment: the child is a short-lived
-  ndmc show/config verb, waited for BEFORE the master closes; no ndm
-  call site starts processes (sing-box is spawned by the proc manager on
-  plain pipes). Failure surface is unchanged (`ERR(...)` prefix contracts
-  ndmExecFailed/ndmcFailed), and a hung ndmc now fails loud at a 30s cap
-  instead of stalling the supervisor forever — the master closes first
-  (kernel hangup), SIGKILL reaping after a grace. The master is read in
-  O_NONBLOCK via raw syscalls: `/dev/ptmx` does not reach the runtime
-  poller (probe 2026-11-14: SetReadDeadline is accepted and ignored,
-  Close does not interrupt a blocked read). New read-only diagnostic
-  `kgate ndm "<verb>"` exercises exactly the daemon's reading path —
-  `kgate ndm "show running-config" | wc -c` is the live clip probe.
-  Golden fixture: a 30.8 KB PTY-rendered running-config (CRLF + erase-to-EOL,
-  shapes from the field captures) pinned as testdata — 201 hotspot
-  bindings, tail markers included, must parse whole (kgate-001 regression).
-
 ## [1.6.0] - 2026-11-10
 
 kgate v1.6.0: the tunnel off-switch actually works now, the deploy path
@@ -469,6 +348,129 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   destroy plan reflects the new step. fqdn validation is ndm-safe
   (lowercase `[a-z0-9.-]`, at least one dot), addresses must be strict IPv4.
   See docs/admin/dns.md.
+
+## [1.10.0] - 2026-11-16
+
+### Added
+
+- `kgate doctor` — самодиагностика на роутере (read-only): версия демона
+  vs бинарник, egress-проба через socks (generate_204), TLS/SAN серта
+  сервера из конфига sing-box, dry-прогон декларативных планов
+  (policies, dns.hosts), логин-страница панели; FAIL-строки с подсказкой,
+  exit 1 при проблемах. Все проверки — кодификация реальных инцидентов
+  поля (16.11 устаревший демон, x509 12.11/16.11, ручной дрейф ndm).
+- Версия работающего демона в `/api/v1/status`, панели (`версия демона`)
+  и `kgate status`: единый источник — `internal/build.Version`, вшивается
+  ldflags при сборке; при расхождении CLI печатает предупреждение
+  «рестарт не активировал апгрейд; S99kgate restart» (инцидент 16.11:
+  старый код крутился 4 дня после апгрейда бинарника).
+
+### Fixed
+
+- Имена сегментов в `/kgate/api/policies` и `kgate policy list segments`:
+  парсер `show ip hotspot` принимал интерфейсный токен (Bridge0) за имя
+  сегмента; теперь Name = реальное ndm-имя (Home — глагольный токен
+  `policy Home VPN`), токен — в поле id, remark/description — источник
+  имени (наблюдение TL 16.11).
+
+## [1.9.4] - 2026-11-16
+
+### Fixed
+- **relay: the ndm UDP data path actually carries data now (kgate-004).**
+  kgate-003 terminated a genuine SOCKS5 UDP ASSOCIATE upstream but assumed
+  the ndm client would use RFC 1928 §7 framing on the BND socket. Live
+  packet capture on the router (16.11, lo:1090) proved otherwise: cmd=5
+  0.0.0.0:0 opens the client's UDP-over-TCP channel, and right after the
+  BND reply the client streams length-prefixed datagrams INTO the control
+  connection — `[data_len:2 BE][dst_ip:4][src_port:2 BE][dst_port:2 BE]
+  [data]` (captured frames: NTP → :123, CoAP → :5683). kgate-003's silent
+  monitor `io.Copy(io.Discard, conn)` ate every one of them; the client
+  saw no answers and closed each association after 1-3s: 13 792/13 792
+  dead associations on 16.11, LAN UDP down (TCP cmd=1 unaffected). The
+  session is now dual-path: ndm TCP-framed datagrams are terminated
+  locally, bridged into the same sing-box UDP endpoint as proper SOCKS
+  frames, and replies are re-framed back into the control connection
+  (mirrored header); RFC-framed datagrams to the BND socket keep working
+  for RFC clients (cmd=3, KeeneticOS socks5-udp). kgate-003 semantics
+  preserved: upstream is still a real UDP ASSOCIATE — zero
+  `dial tcp 0.0.0.0:0` (signature-asserted in the lab). Per the ArchCom
+  phase-S decision the association now also SURVIVES control-conn closure
+  for a short grace window (`udpPeerGraceTimeout`, 15s) instead of dying
+  instantly — RFC-shaped clients that close the TCP leg and keep sending
+  UDP stay served, and idle/grace deadlines keep fd usage bounded.
+  New tooling: `kgate udp-smoke` (circular datagram gate for the deployer:
+  cmd=5 → DNS datagram → answer through the tunnel; non-zero rc = auto
+  rollback) with `--rfc` for the second leg; lab matrix `make -C lab udp`
+  runs the full UDP data-path suite against a REAL sing-box 1.14.4 (12
+  rows incl. the red-green control-conn-close pair, dead-upstream rep=5,
+  fd-hygiene after a 60-association burst, deterministic fuzz with no
+  panics). Unit suite extended: ndm roundtrip, zero-len keepalive,
+  oversized-frame desync hard-close, first-transport reply locking, fuzz
+  survivor — `go test -race` green.
+
+## [1.9.3] - 2026-11-15
+
+### Fixed
+- **relay: UDP ASSOCIATE terminated as a real SOCKS5 UDP session
+  (kgate-003).** The tolerant relay translated EVERY request — including
+  UDP ASSOCIATE (cmd=3, and the broken ndm client's cmd=5 with dst
+  0.0.0.0:0) — into a TCP CONNECT towards sing-box mixed. sing-box then
+  dialled `tcp 0.0.0.0:0` through the direct outbound and timed out after
+  5s: 143 029 `open connection to 0.0.0.0:0 ... i/o timeout` errors in
+  singbox.log over the kgate-001-dev deploy (staged 13.11 20:02, ~17/min)
+  and dead UDP flows on the LAN. The relay now dispatches the UDP class
+  (cmd=3 with any dst; cmd=5 with any-dst 0.0.0.0:0/"::":0) to a genuine
+  RFC 1928 §7 session: upstream cmd=3 to sing-box (which opens its UDP
+  endpoint instead of dialing), a client-facing UDP socket on the relay
+  host, BND echoed as the address the client itself reached, and a
+  transparent frame pump (RSV/FRAG/ATYP/DST headers pass through
+  untouched; FRAG>0 dropped+logged). Demultiplex by datagram source: the
+  first non-sing-box sender locks the session peer, strangers are
+  dropped. Session ends on control-conn close (RFC: TCP holds the UDP
+  state) or a 2-minute idle. TCP compatibility preserved: cmd=1 and the
+  broken cmd=5 with a REAL target still go to CONNECT (tun2socks).
+  Regression suite over a sing-box mock: cmd=3 and cmd=5/0.0.0.0:0 must
+  reach upstream as cmd=3 (never CONNECT), UDP frame roundtrip client ⇄
+  relay ⇄ sing-box byte-exact, FRAG dropped, cmd=5 with a real dst still
+  CONNECTs.
+- **`kgate policy set segment` failed on every real-router resolve
+  (kgate-001).** KeeneticOS 4.x renders `show ip hotspot` as per-association
+  blocks with an EMPTY `interface:` value and the segment identity on
+  `id:`/`name:`/`description:` sub-lines (`id: Bridge0`, `name: Home`,
+  `description: WLAN`). The parser took the empty value as the name, so every
+  `Segment.Name` was `""` and every resolve died — by ndm name («сегмент не
+  найден»), by description (resolved to an empty name, rejected by the bind
+  token guard). The known bug 3de63d9e (declarative policies bypassed the
+  resolver since 1.8.0) is fixed at the root: segment identity is parsed from
+  the sub-lines (ndm name = verb token; bridge id and description are resolve
+  aliases), associations dedup per segment, association `policy:`/`active:`
+  lines attach to their host, and the daemon overlays segment bindings from
+  running-config (`policy <seg> <VPN|NO-VPN>`) exactly as it already did for
+  hosts — the set-segment idempotence check now sees real bindings. A failed
+  resolve is loud: it names the searched target and lists what ndm actually
+  showed. Regression fixtures pin the captured live render.
+- **daemon: ndmc reads now run over a local PTY (kgate-002).** The daemon
+  called `/bin/ndmc` through `sh` + pipes, so it inherited the non-tty clip
+  documented in 1.8.2 for the deploy path: as the running-config grows, the
+  tail of `show running-config` — where the `ip hotspot` bindings live —
+  is lost, blinding the policy overlay (the daemon half of the kgate-001
+  report). Every ndmc call from the daemon now runs under a fresh local
+  PTY (creack/pty, 200x500 dumb profile, same as deploy), with ANSI/CR
+  stripped before return. SIGHUP containment: the child is a short-lived
+  ndmc show/config verb, waited for BEFORE the master closes; no ndm
+  call site starts processes (sing-box is spawned by the proc manager on
+  plain pipes). Failure surface is unchanged (`ERR(...)` prefix contracts
+  ndmExecFailed/ndmcFailed), and a hung ndmc now fails loud at a 30s cap
+  instead of stalling the supervisor forever — the master closes first
+  (kernel hangup), SIGKILL reaping after a grace. The master is read in
+  O_NONBLOCK via raw syscalls: `/dev/ptmx` does not reach the runtime
+  poller (probe 2026-11-14: SetReadDeadline is accepted and ignored,
+  Close does not interrupt a blocked read). New read-only diagnostic
+  `kgate ndm "<verb>"` exercises exactly the daemon's reading path —
+  `kgate ndm "show running-config" | wc -c` is the live clip probe.
+  Golden fixture: a 30.8 KB PTY-rendered running-config (CRLF + erase-to-EOL,
+  shapes from the field captures) pinned as testdata — 201 hotspot
+  bindings, tail markers included, must parse whole (kgate-001 regression).
 
 ## [1.5.0] - 2026-11-09
 
