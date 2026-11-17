@@ -76,7 +76,11 @@ func load() *model.Config {
 
 // defaultCfgPath resolves the default config location: $KGATE_CONFIG, then
 // ~/.kgate/kgate.yaml (canonical), falling back to ./kgate.yaml for a
-// repo-local checkout that predates the canonical path.
+// repo-local checkout that predates the canonical path, and to the
+// Entware layout (/opt/etc/kgate/kgate.yaml) when running ON the router
+// — там ~/.kgate не существует by construction (root's home пуст), а
+// канонический путь рендерится деплоем (v1.10.2: doctor без -c читал
+// дефолт-конфиг и рапортовал «panel.password не задан» на живой системе).
 func defaultCfgPath() string {
 	if p := os.Getenv("KGATE_CONFIG"); p != "" {
 		return p
@@ -86,9 +90,15 @@ func defaultCfgPath() string {
 		if _, err := os.Stat("kgate.yaml"); err == nil {
 			return "kgate.yaml"
 		}
+		if _, err := os.Stat(routerCfgPath); err == nil {
+			return routerCfgPath
+		}
 	}
 	return p
 }
+
+// routerCfgPath — путь рендера конфига на роутере (S99kgate serve -c).
+const routerCfgPath = "/opt/etc/kgate/kgate.yaml"
 
 // canonicalCfgPath is the canonical location WITHOUT the CWD fallback —
 // `config create` targets it so a fresh setup never lands in the CWD.
