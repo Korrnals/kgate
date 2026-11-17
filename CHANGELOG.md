@@ -472,6 +472,16 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   shapes from the field captures) pinned as testdata — 201 hotspot
   bindings, tail markers included, must parse whole (kgate-001 regression).
 
+## [1.10.1] - 2026-11-16
+
+### Fixed
+- **doctor: работает на самом роутере из коробки.** Проверка версии демона
+  требовала клиентские mTLS-сертификаты, которых на роутере нет by
+  construction (CA-ключ живёт на control-node) — doctor падал с
+  «CA не найден» до любых проверок. Теперь версия демона берётся через
+  панель (логин паролем из конфига → /kgate/api/status, поле version
+  с 1.10.0); control-node путь через mTLS не изменился.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
