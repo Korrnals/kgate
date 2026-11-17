@@ -482,6 +482,13 @@ Field vol.4: the sing-box binary actually lands on Keenetic now.
   панель (логин паролем из конфига → /kgate/api/status, поле version
   с 1.10.0); control-node путь через mTLS не изменился.
 
+## [1.10.2] - 2026-11-16
+
+### Fixed
+- **doctor: httpc() fatal on missing local certs bypassed the panel
+  fallback** — the pre-check now returns an error instead of exiting,
+  doctor works end-to-end on the router.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
